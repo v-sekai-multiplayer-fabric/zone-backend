@@ -46,33 +46,165 @@ using TwJson::parse_json_str;
 
 using Params = std::unordered_map<std::string, TwValue>;
 
-// "{name}" → params[name], anything else returned as-is.
+// "{name}"        → params[name] (type preserved).
+// "{a}_{b}", "x{a}", etc. → string interpolation of every "{var}" against
+//   params, result is a TwValue::STRING. Unknown vars are left literal.
+// Anything else returned as-is.
 inline TwValue resolve_param(const TwValue &val, const Params &params) {
     if (!val.is_string()) return val;
     const auto &s = val.as_string();
-    if (s.size() >= 3 && s.front() == '{' && s.back() == '}') {
+
+    // Fast path: the entire string is a single "{name}" — preserve the
+    // bound value's type so non-string params (ints, floats) flow through.
+    if (s.size() >= 3 && s.front() == '{' && s.back() == '}' &&
+            s.find('{', 1) == std::string::npos) {
         std::string name = s.substr(1, s.size() - 2);
         auto it = params.find(name);
         if (it != params.end()) return it->second;
+        return val;
     }
-    return val;
+
+    // No braces at all → no substitution.
+    if (s.find('{') == std::string::npos) return val;
+
+    // Multi-substitution: scan and stringify every "{var}".
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size()) {
+        if (s[i] == '{') {
+            size_t end = s.find('}', i + 1);
+            if (end == std::string::npos) {
+                out.append(s, i, std::string::npos);
+                break;
+            }
+            std::string name = s.substr(i + 1, end - i - 1);
+            auto it = params.find(name);
+            if (it != params.end()) out += it->second.to_string();
+            else out.append(s, i, end - i + 1);
+            i = end + 1;
+        } else {
+            out += s[i++];
+        }
+    }
+    return TwValue(out);
 }
 
-// "/var/{key}" → {var, resolved_key}. Returns {"", nil} on malformed input.
+// RFC 6901 §3 — escape a string so it represents one reference token.
+// Order matters: '~' must be encoded before '/'.
+inline std::string escape_rfc6901(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '~') out += "~0";
+        else if (c == '/') out += "~1";
+        else out += c;
+    }
+    return out;
+}
+
+// RFC 6901 §3 — a reference token is well-formed iff every '~' is followed
+// by '0' or '1'. Anything else is an "error condition" per §7.
+inline bool is_valid_rfc6901_token(const std::string &t) {
+    for (size_t i = 0; i < t.size(); i++) {
+        if (t[i] != '~') continue;
+        if (i + 1 >= t.size()) return false;
+        char nxt = t[i + 1];
+        if (nxt != '0' && nxt != '1') return false;
+        ++i;
+    }
+    return true;
+}
+
+// RFC 6901 §4 — decode a single reference token. Per spec: replace every
+// '~1' first, then every '~0'. Order is significant: doing '~0' first would
+// turn '~01' into '~1' which would then become '/' (wrong; must be '~1').
+// Caller is responsible for validating the token first.
+inline std::string unescape_rfc6901(const std::string &t) {
+    std::string mid;
+    mid.reserve(t.size());
+    for (size_t i = 0; i < t.size(); i++) {
+        if (t[i] == '~' && i + 1 < t.size() && t[i + 1] == '1') {
+            mid += '/';
+            ++i;
+        } else {
+            mid += t[i];
+        }
+    }
+    std::string out;
+    out.reserve(mid.size());
+    for (size_t i = 0; i < mid.size(); i++) {
+        if (mid[i] == '~' && i + 1 < mid.size() && mid[i + 1] == '0') {
+            out += '~';
+            ++i;
+        } else {
+            out += mid[i];
+        }
+    }
+    return out;
+}
+
+// Substitute '{name}' templates in a raw pointer string against `params`,
+// escaping each substituted value per RFC 6901 §3 so that values containing
+// '/' or '~' map to a single reference token rather than splitting the path.
+// Unknown vars are left literal. Multiple templates per segment are allowed.
+inline std::string substitute_pointer(const std::string &raw, const Params &params) {
+    std::string out;
+    out.reserve(raw.size());
+    size_t i = 0;
+    while (i < raw.size()) {
+        if (raw[i] == '{') {
+            size_t end = raw.find('}', i + 1);
+            if (end == std::string::npos) {
+                out.append(raw, i, std::string::npos);
+                break;
+            }
+            std::string name = raw.substr(i + 1, end - i - 1);
+            auto it = params.find(name);
+            if (it != params.end()) out += escape_rfc6901(it->second.to_string());
+            else out.append(raw, i, end - i + 1);
+            i = end + 1;
+        } else {
+            out += raw[i++];
+        }
+    }
+    return out;
+}
+
+// RFC 6901 — parse a JSON Pointer into decoded reference tokens.
+// Empty string → {} (whole-document reference).
+// Returns {} for any error condition: missing leading '/' or a token with a
+// '~' not followed by '0' or '1' (per §3 ABNF).
+inline std::vector<std::string> parse_rfc6901(const std::string &ptr) {
+    if (ptr.empty()) return {};
+    if (ptr[0] != '/') return {};
+    std::vector<std::string> tokens;
+    std::string cur;
+    auto flush = [&](std::vector<std::string> &acc) -> bool {
+        if (!is_valid_rfc6901_token(cur)) return false;
+        acc.push_back(unescape_rfc6901(cur));
+        cur.clear();
+        return true;
+    };
+    for (size_t i = 1; i < ptr.size(); i++) {
+        if (ptr[i] == '/') {
+            if (!flush(tokens)) return {};
+        } else {
+            cur += ptr[i];
+        }
+    }
+    if (!flush(tokens)) return {};
+    return tokens;
+}
+
+// Resolve a templated pointer into Taskweft's 2-segment (var, key) shape.
+// Substitutes '{var}' (auto-escaping per RFC 6901), then parses per RFC 6901.
+// Returns {"", nil} unless the pointer decodes to exactly two tokens.
 inline std::pair<std::string, TwValue> parse_pointer(
         const std::string &ptr, const Params &params) {
-    std::vector<std::string> parts;
-    std::string cur;
-    for (char c : ptr) {
-        if (c == '/') { parts.push_back(cur); cur.clear(); }
-        else cur += c;
-    }
-    parts.push_back(cur);
-
-    int offset = (!parts.empty() && parts[0].empty()) ? 1 : 0;
-    if ((int)parts.size() < offset + 2) return {"", TwValue{}};
-
-    return {parts[offset], resolve_param(TwValue(parts[offset + 1]), params)};
+    auto tokens = parse_rfc6901(substitute_pointer(ptr, params));
+    if (tokens.size() != 2) return {"", TwValue{}};
+    return {std::move(tokens[0]), TwValue(std::move(tokens[1]))};
 }
 
 // Forward declaration.

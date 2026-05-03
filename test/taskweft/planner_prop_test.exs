@@ -3,7 +3,6 @@ defmodule Taskweft.PlannerPropTest do
   use PropCheck
 
   @domains_dir Path.join([__DIR__, "../../priv/plans/domains"])
-  @problems_dir Path.join([__DIR__, "../../priv/plans/problems"])
 
   def domain_file_gen do
     files = File.ls!(@domains_dir) |> Enum.filter(&String.ends_with?(&1, ".jsonld"))
@@ -123,5 +122,131 @@ defmodule Taskweft.PlannerPropTest do
           true
       end
     end
+  end
+
+  # --- multi-substitution in pointers ---
+  #
+  # Regression: prior to the resolve_param fix, "/cells/{r}_{c}" worked in
+  # `set` ops but silently failed in `check` ops because resolve_param only
+  # matched whole-string "{name}" patterns. Confirm any combination of two
+  # params interpolates correctly inside a single path segment for both
+  # `check` and `set`, regardless of param order or value types.
+
+  defp multi_sub_domain(r, c, v) do
+    %{
+      "@type" => "domain:Definition",
+      "name" => "multi_sub_test",
+      "variables" => [%{"name" => "cells", "init" => %{"#{r}_#{c}" => 0}}],
+      "actions" => %{
+        "a_place" => %{
+          "params" => ["r", "c", "v"],
+          "body" => [
+            %{"check" => "/cells/{r}_{c}", "eq" => 0},
+            %{"set" => "/cells/{r}_{c}", "value" => "{v}"}
+          ]
+        }
+      },
+      "methods" => %{},
+      "tasks" => [["a_place", r, c, v]]
+    }
+    |> Jason.encode!()
+  end
+
+  property "resolve_param: multi-{var} substitution works in check + set" do
+    forall {r, c, v} <- {range(0, 9), range(0, 9), range(1, 9)} do
+      domain = multi_sub_domain(r, c, v)
+      match?({:ok, _}, Taskweft.plan(domain))
+    end
+  end
+
+  # --- RFC 6901 conformance ---
+  #
+  # parse_pointer must:
+  #   * round-trip keys containing '/' and '~' via the ~1/~0 escapes.
+  #   * substitute {var} templates BEFORE escape, so a value of "a/b" maps
+  #     to a single reference token.
+  #   * reject pointers with arity != 2 (taskweft's state is 2-level).
+  #   * reject pointers without a leading '/'.
+
+  defp single_key_domain(key, value) do
+    %{
+      "@type" => "domain:Definition",
+      "name" => "ptr_test",
+      "variables" => [%{"name" => "store", "init" => %{key => 0}}],
+      "actions" => %{
+        "a_set" => %{
+          "params" => ["k", "v"],
+          "body" => [
+            %{"check" => "/store/{k}", "eq" => 0},
+            %{"set" => "/store/{k}", "value" => "{v}"}
+          ]
+        }
+      },
+      "methods" => %{},
+      "tasks" => [["a_set", key, value]]
+    }
+    |> Jason.encode!()
+  end
+
+  property "RFC 6901: keys containing '/' substitute as single tokens" do
+    forall {prefix, suffix, v} <- {non_empty_string(), non_empty_string(), range(1, 99)} do
+      key = "#{prefix}/#{suffix}"
+      match?({:ok, _}, Taskweft.plan(single_key_domain(key, v)))
+    end
+  end
+
+  property "RFC 6901: keys containing '~' substitute as single tokens" do
+    forall {prefix, suffix, v} <- {non_empty_string(), non_empty_string(), range(1, 99)} do
+      key = "#{prefix}~#{suffix}"
+      match?({:ok, _}, Taskweft.plan(single_key_domain(key, v)))
+    end
+  end
+
+  property "RFC 6901: keys with mixed '/' and '~' round-trip" do
+    forall v <- range(1, 99) do
+      # Hand-crafted edge cases per RFC 6901 §4 ordering rules
+      Enum.all?(["~/", "/~", "~~", "//", "~01", "~10"], fn key ->
+        match?({:ok, _}, Taskweft.plan(single_key_domain(key, v)))
+      end)
+    end
+  end
+
+  # Strict mode: bare '~' (not followed by '0' or '1') is invalid per §3 ABNF.
+  defp invalid_pointer_domain(ptr) do
+    %{
+      "@type" => "domain:Definition",
+      "name" => "invalid_ptr",
+      "variables" => [%{"name" => "store", "init" => %{"a" => 0}}],
+      "actions" => %{
+        "a_bad" => %{
+          "params" => [],
+          "body" => [%{"set" => ptr, "value" => 1}]
+        }
+      },
+      "methods" => %{},
+      "tasks" => [["a_bad"]]
+    }
+    |> Jason.encode!()
+  end
+
+  property "RFC 6901: bare '~' in a literal pointer is rejected" do
+    forall ptr <-
+             oneof([
+               exactly("/store/a~b"),
+               exactly("/store/a~"),
+               exactly("/store/~"),
+               exactly("/store/~x"),
+               exactly("/store/~~"),
+               exactly("/store/~2")
+             ]) do
+      match?({:error, _}, Taskweft.plan(invalid_pointer_domain(ptr)))
+    end
+  end
+
+  defp non_empty_string do
+    such_that(
+      s <- utf8(),
+      when: byte_size(s) > 0 and not String.contains?(s, "{") and not String.contains?(s, "}")
+    )
   end
 end
