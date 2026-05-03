@@ -8,7 +8,8 @@ defmodule Taskweft.MixProject do
       elixir: "~> 1.17",
       compilers: [:elixir_make] ++ Mix.compilers(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      deps: deps()
+      deps: deps(),
+      dialyzer: [plt_add_apps: [:mix], ignore_warnings: ".dialyzer_ignore.exs"]
     ]
   end
 
@@ -27,6 +28,8 @@ defmodule Taskweft.MixProject do
     [
       {:elixir_make, "~> 0.9"},
       {:jason, "~> 1.4"},
+      {:ex_mcp, "~> 0.9"},
+      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:propcheck, "~> 1.4", only: [:test, :dev], runtime: false},
       {:mox, "~> 1.2", only: :test},
       {:benchee, "~> 1.3", only: :dev, runtime: false}
