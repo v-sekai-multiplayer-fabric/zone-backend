@@ -29,7 +29,7 @@ defmodule Taskweft.NIF do
   @on_load :__on_load__
 
   def __on_load__ do
-    path = :code.priv_dir(:taskweft) |> to_string() |> Kernel.<>("/libtaskweft_nif")
+    path = :code.priv_dir(:taskweft_nif) |> to_string() |> Kernel.<>("/libtaskweft_nif")
     :erlang.load_nif(path, 0)
   end
 
