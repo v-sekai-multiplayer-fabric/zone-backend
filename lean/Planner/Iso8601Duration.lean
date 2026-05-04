@@ -190,7 +190,7 @@ error and would already have been raised. -/
 def parse (s : String) : Except ParseError (List DurComponent) :=
   match s.toList with
   | []        => .error .empty
-  | 'P' :: [] => .error .unexpectedEnd
+  | 'P' :: [] => .ok []                     -- "P" alone = zero duration (Timex)
   | 'P' :: rest =>
       match parseComponents rest [] false false with
       | .error e => .error e
@@ -211,6 +211,7 @@ ground-truth check that the Lean spec and the implementation agree. -/
 #eval parse "P15Y3M2D"
 #eval parse "PT3H12M25.001S"
 #eval parse "P2W"
+#eval parse "P"                   -- expect ok [] (zero duration, per Timex)
 #eval parse "P15YT3D"             -- expect dateAfterT
 #eval parse ""                    -- expect empty
 #eval parse "X1D"                 -- expect expectedP
