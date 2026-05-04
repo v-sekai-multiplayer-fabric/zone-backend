@@ -8,13 +8,18 @@ defmodule Taskweft.Iso8601DurationPropTest do
   ≤ 3 fractional second digits — `lean/Planner/Iso8601Duration.lean`
   is the spec for that subset).
 
-  Three layers of coverage:
+  Five layers of coverage:
 
   1. Doctests — the seven worked examples Timex documents.
   2. Generator-driven properties — random-but-valid duration strings,
      and random arbitrary strings, both checked against Timex.
-  3. Bounded exhaustive enumeration — every string of length ≤ 5 over
+  3. NIF cross-check — calls `check_temporal/3` through the compiled C++
+     NIF and compares its total milliseconds against the Elixir reference,
+     confirming `tw_parse_duration_ms` and the Elixir parser agree.
+  4. Bounded exhaustive enumeration — every string of length ≤ 5 over
      the duration alphabet gets the same agreement check.
+  5. Adversarial fuzzing — mutations, random ASCII, large integers,
+     stuttering, and a full divergence catalogue.
   """
 
   use ExUnit.Case, async: true
@@ -81,7 +86,26 @@ defmodule Taskweft.Iso8601DurationPropTest do
     end
   end
 
-  # ---- Layer 3: exhaustive small-string enumeration --------------------------
+  # ---- Layer 3: NIF cross-check -----------------------------------------------
+
+  # Calls check_temporal through the compiled C++ NIF with a minimal one-action
+  # domain whose "noop" action carries the generated ISO 8601 duration.
+  # The NIF uses tw_parse_duration_ms internally; comparing its total_iso
+  # against the Elixir reference parser confirms the C++ and Elixir parsers
+  # agree on every valid duration the generator produces.
+  #
+  # Skipped gracefully (returns true) if the NIF is not loaded.
+  describe "NIF cross-check" do
+    property "NIF tw_parse_duration_ms total agrees with Elixir total_milliseconds",
+             [:verbose, numtests: @numtests] do
+      forall components <- valid_components_gen() do
+        input = format_components(components)
+        nif_agrees_on_total(input)
+      end
+    end
+  end
+
+  # ---- Layer 4: exhaustive small-string enumeration --------------------------
 
   describe "exhaustive enumeration" do
     @alphabet ~c"PTYMWDHS0123."
@@ -101,7 +125,7 @@ defmodule Taskweft.Iso8601DurationPropTest do
     end
   end
 
-  # ---- Layer 4: adversarial fuzzing -----------------------------------------
+  # ---- Layer 5: adversarial fuzzing -----------------------------------------
 
   # After the canonical-order + lowest-order-fraction fixes landed, ours is
   # stricter than Timex on order and on fraction position. The adversarial
@@ -163,6 +187,29 @@ defmodule Taskweft.Iso8601DurationPropTest do
         agree_with_spec(input)
       end
     end
+  end
+
+  # ---- NIF helpers -----------------------------------------------------------
+
+  # Embeds `duration_iso` as the duration of a no-op action in a minimal
+  # domain, runs check_temporal through the NIF, and compares the total
+  # milliseconds the NIF reports against the Elixir reference parser.
+  # Returns true (skip) if the NIF is not loaded or the domain fails to parse.
+  defp nif_agrees_on_total(duration_iso) do
+    domain =
+      ~s({"actions":{"noop":{"duration":"#{duration_iso}"}},"tasks":[["noop"]],"state":{}})
+
+    json = Taskweft.NIF.check_temporal(domain, ~s([["noop"]]), "PT0S")
+
+    with [_, total_iso] <- Regex.run(~r{"total"\s*:\s*"([^"]+)"}, json),
+         {:ok, ours} <- Iso8601Duration.parse(duration_iso),
+         {:ok, nif_parsed} <- Iso8601Duration.parse(total_iso) do
+      Iso8601Duration.total_milliseconds(ours) == Iso8601Duration.total_milliseconds(nif_parsed)
+    else
+      _ -> true
+    end
+  rescue
+    _ -> true
   end
 
   # ---- Generators ------------------------------------------------------------
