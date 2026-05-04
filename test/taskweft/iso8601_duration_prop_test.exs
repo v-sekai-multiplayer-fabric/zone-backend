@@ -8,7 +8,7 @@ defmodule Taskweft.Iso8601DurationPropTest do
   ≤ 3 fractional second digits — `lean/Planner/Iso8601Duration.lean`
   is the spec for that subset).
 
-  Five layers of coverage:
+  Six layers of coverage:
 
   1. Doctests — the seven worked examples Timex documents.
   2. Generator-driven properties — random-but-valid duration strings,
@@ -16,9 +16,11 @@ defmodule Taskweft.Iso8601DurationPropTest do
   3. NIF cross-check — calls `check_temporal/3` through the compiled C++
      NIF and compares its total milliseconds against the Elixir reference,
      confirming `tw_parse_duration_ms` and the Elixir parser agree.
-  4. Bounded exhaustive enumeration — every string of length ≤ 5 over
+  4. Civil-time NIF cross-check — fixed-date assertions that P1Y from a leap
+     year = 366 d, P1M with month-end clamping, and fixed units unchanged.
+  5. Bounded exhaustive enumeration — every string of length ≤ 5 over
      the duration alphabet gets the same agreement check.
-  5. Adversarial fuzzing — mutations, random ASCII, large integers,
+  6. Adversarial fuzzing — mutations, random ASCII, large integers,
      stuttering, and a full divergence catalogue.
   """
 
@@ -105,7 +107,44 @@ defmodule Taskweft.Iso8601DurationPropTest do
     end
   end
 
-  # ---- Layer 4: exhaustive small-string enumeration --------------------------
+  # ---- Layer 4: civil-time cross-check ----------------------------------------
+
+  # Verifies tw_check_temporal_civil (NIF) produces calendar-correct totals for
+  # year and month durations.  Uses fixed reference dates so results are
+  # deterministic regardless of when the test runs.
+  describe "civil-time NIF" do
+    # 2024 is a leap year: P1Y from 2024-01-01 = 366 days.
+    test "P1Y from 2024-01-01 = 366 days" do
+      assert civil_total_ms("P1Y", "2024-01-01") == 366 * 86_400_000
+    end
+
+    # Non-leap year: P1Y from 2023-01-01 = 365 days.
+    test "P1Y from 2023-01-01 = 365 days" do
+      assert civil_total_ms("P1Y", "2023-01-01") == 365 * 86_400_000
+    end
+
+    # Month-end clamping: Jan 31 + 1 month → Feb 29 (leap), not Feb 31.
+    test "P1M from 2024-01-31 = 29 days" do
+      assert civil_total_ms("P1M", "2024-01-31") == 29 * 86_400_000
+    end
+
+    # Non-leap February: Jan 31 + 1 month → Feb 28.
+    test "P1M from 2023-01-31 = 28 days" do
+      assert civil_total_ms("P1M", "2023-01-31") == 28 * 86_400_000
+    end
+
+    # Fixed units unaffected by reference date.
+    test "P7D with reference date = 7 * 86_400_000 ms" do
+      assert civil_total_ms("P7D", "2024-01-01") == 7 * 86_400_000
+    end
+
+    # Fixed units unaffected without reference date.
+    test "P7D without reference date = 7 * 86_400_000 ms" do
+      assert nif_total_ms("P7D") == 7 * 86_400_000
+    end
+  end
+
+  # ---- Layer 5: exhaustive small-string enumeration --------------------------
 
   describe "exhaustive enumeration" do
     @alphabet ~c"PTYMWDHS0123."
@@ -210,6 +249,18 @@ defmodule Taskweft.Iso8601DurationPropTest do
     end
   rescue
     _ -> true
+  end
+
+  # Calls check_temporal_civil through the NIF with the given reference date.
+  # Returns the total milliseconds reported, or raises if the NIF is not loaded.
+  defp civil_total_ms(duration_iso, reference_date) do
+    domain =
+      ~s({"actions":{"noop":{"duration":"#{duration_iso}"}},"tasks":[["noop"]],"state":{}})
+
+    json = Taskweft.NIF.check_temporal_civil(domain, ~s([["noop"]]), "PT0S", reference_date)
+    [_, total_iso] = Regex.run(~r{"total"\s*:\s*"([^"]+)"}, json)
+    {:ok, comps} = Iso8601Duration.parse(total_iso)
+    Iso8601Duration.total_milliseconds(comps)
   end
 
   # ---- Generators ------------------------------------------------------------
