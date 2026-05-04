@@ -53,7 +53,7 @@
   "statistex": {:hex, :statistex, "1.1.0", "7fec1eb2f580a0d2c1a05ed27396a084ab064a40cfc84246dbfb0c72a5c761e5", [:mix], [], "hexpm", "f5950ea26ad43246ba2cce54324ac394a4e7408fdcf98b8e230f503a0cba9cf5"},
   "taskweft_mcp": {:git, "https://github.com/V-Sekai-fire/taskweft-mcp.git", "a12a16dfead3aec89aa960c937fa5943d5d55591", []},
   "taskweft_mcp_client": {:git, "https://github.com/V-Sekai-fire/taskweft-mcp-client.git", "59a79670c51afe1e9dbf8fc1570e84936d6237f6", []},
-  "taskweft_nif": {:git, "https://github.com/V-Sekai-fire/taskweft-nif.git", "8ef3aa9e24246c3fb5d19adc6afbdd03377821e0", []},
+  "taskweft_nif": {:git, "https://github.com/V-Sekai-fire/taskweft-nif.git", "b7ede2c783559f8a10cb314f8ccb10ef4cef499f", []},
   "taskweft_plans": {:git, "https://github.com/V-Sekai-fire/taskweft-plans.git", "63535115d665d162a3652aaec6ab5d64bc230c5b", []},
   "taskweft_rebac": {:git, "https://github.com/V-Sekai-fire/taskweft-rebac.git", "46e824c597ab5f485858d525c4cfd005a5a164df", []},
   "telemetry": {:hex, :telemetry, "1.4.1", "ab6de178e2b29b58e8256b92b382ea3f590a47152ca3651ea857a6cae05ac423", [:rebar3], [], "hexpm", "2172e05a27531d3d31dd9782841065c50dd5c3c7699d95266b2edd54c2dafa1c"},
