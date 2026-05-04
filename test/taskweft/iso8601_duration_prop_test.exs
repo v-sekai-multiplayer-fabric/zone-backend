@@ -138,9 +138,9 @@ defmodule Taskweft.Iso8601DurationPropTest do
       assert civil_total_ms("P7D", "2024-01-01") == 7 * 86_400_000
     end
 
-    # Fixed units unaffected without reference date.
+    # Fixed units unaffected without reference date (empty string → fixed-day fallback).
     test "P7D without reference date = 7 * 86_400_000 ms" do
-      assert nif_total_ms("P7D") == 7 * 86_400_000
+      assert civil_total_ms("P7D", "") == 7 * 86_400_000
     end
   end
 
