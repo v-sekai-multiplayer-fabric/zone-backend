@@ -1,5 +1,5 @@
 {
-  "@context": {"khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/", "domain": "khr:planning/domain/"},
+  "@context": {"vsekai": "https://v-sekai.org/", "domain": "vsekai:planning/domain/"},
   "@type": "domain:Definition",
   "name": "ipyhop_blocks_init3_goal3",
   "description": "IPyHOP bw_large_d: 19 blocks. Expected 38-action plan. Tasks ordered to match goal3.",

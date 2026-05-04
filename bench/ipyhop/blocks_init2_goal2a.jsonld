@@ -1,5 +1,5 @@
 {
-  "@context": {"khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/", "domain": "khr:planning/domain/"},
+  "@context": {"vsekai": "https://v-sekai.org/", "domain": "vsekai:planning/domain/"},
   "@type": "domain:Definition",
   "name": "ipyhop_blocks_init2_goal2a",
   "description": "IPyHOP canonical blocks_world init_state_2 + goal2a: 4 blocks, achieve b-on-c, a-on-d. Expected plan: unstack-a, putdown-a, unstack-b, stack-b-c, pickup-a, stack-a-d.",

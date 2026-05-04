@@ -8,13 +8,13 @@ defmodule Taskweft.JSONLD.Context do
   """
 
   @planning_domain %{
-    "khr" => "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
-    "domain" => "khr:planning/domain/"
+    "vsekai" => "https://v-sekai.org/",
+    "domain" => "vsekai:planning/domain/"
   }
 
   @udon %{
-    "khr" => "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
-    "domain" => "khr:planning/domain/",
+    "vsekai" => "https://v-sekai.org/",
+    "domain" => "vsekai:planning/domain/",
     "udon" => "https://v-sekai.github.io/taskweft-udon/vocab#"
   }
 
