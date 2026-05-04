@@ -4,14 +4,16 @@ defmodule Taskweft.Iso8601Duration do
   @moduledoc """
   ISO 8601 duration parser, faithful Elixir port of `lean/Planner/Iso8601Duration.lean`.
 
-  Mirrors `Timex.Parse.Duration.Parsers.ISO8601Parser` byte-for-byte:
-  same grammar, same error tags, same UTC-elapsed normalisation
-  (`Y = 365d`, `Mo = 30d`, `W = 7d`, `D = 86_400 s`). Civil time is
-  out of scope on purpose.
+  Conforms to ISO 8601-1:2019 §5.5.2.4: canonical order Y → Mo → D → T → H → Mi → S
+  (each unit at most once), fractions allowed on at most one unit and
+  only if no smaller unit follows, weeks must stand alone. UTC-elapsed
+  normalisation (`Y = 365d`, `Mo = 30d`, `W = 7d`, `D = 86_400 s`);
+  civil time is out of scope.
 
   This module exists so the Lean spec can be exercised with PropCheck
-  against the Timex oracle. The eventual C++ NIF port lives upstream
-  in `taskweft-nif/standalone/tw_temporal.hpp`.
+  against the Timex oracle and a strict spec recogniser. The C++ NIF
+  port lives upstream in `taskweft-nif/standalone/tw_temporal.hpp` and
+  must match this module's behaviour.
   """
 
   @type unit :: :y | :mo | :w | :d | :h | :mi | :s
@@ -28,6 +30,8 @@ defmodule Taskweft.Iso8601Duration do
           | :duplicate_t
           | :mixed_basic_extended
           | {:unexpected_token, String.t()}
+          | {:non_canonical_order, unit()}
+          | :fraction_not_on_last
 
   @units_date %{?Y => :y, ?M => :mo, ?W => :w, ?D => :d}
   @units_time %{?H => :h, ?M => :mi, ?S => :s}
@@ -39,10 +43,7 @@ defmodule Taskweft.Iso8601Duration do
   def parse("P"), do: {:ok, []}
 
   def parse(<<?P, rest::binary>>) do
-    with {:ok, components} <- parse_components(rest, [], false, false),
-         :ok <- check_basic_form(components) do
-      {:ok, components}
-    end
+    parse_components(rest, [], false, false, -1, false)
   end
 
   def parse(<<c::utf8, _::binary>>), do: {:error, {:expected_p, <<c::utf8>>}}
@@ -50,7 +51,9 @@ defmodule Taskweft.Iso8601Duration do
   @spec total_milliseconds([component()]) :: non_neg_integer()
   def total_milliseconds(components) do
     Enum.reduce(components, 0, fn c, acc ->
-      acc + c.whole * unit_milliseconds(c.unit) + c.frac_milli
+      base = c.whole * unit_milliseconds(c.unit)
+      frac = c.frac_milli * div(unit_milliseconds(c.unit), 1000)
+      acc + base + frac
     end)
   end
 
@@ -65,18 +68,22 @@ defmodule Taskweft.Iso8601Duration do
   defp unit_milliseconds(:mi), do: 60 * 1000
   defp unit_milliseconds(:s), do: 1000
 
-  defp parse_components("", acc, _in_time, _saw_t), do: {:ok, Enum.reverse(acc)}
+  defp parse_components("", acc, _in_time, _saw_t, _last_rank, _frac_seen),
+    do: {:ok, Enum.reverse(acc)}
 
-  defp parse_components(<<?T, _rest::binary>>, _acc, _in_time, true),
+  defp parse_components(_input, _acc, _in_time, _saw_t, _last_rank, true),
+    do: {:error, :fraction_not_on_last}
+
+  defp parse_components(<<?T, _rest::binary>>, _acc, _in_time, true, _last_rank, _frac),
     do: {:error, :duplicate_t}
 
-  defp parse_components(<<?T>>, _acc, _in_time, _saw_t),
+  defp parse_components(<<?T>>, _acc, _in_time, _saw_t, _last_rank, _frac),
     do: {:error, :unexpected_end}
 
-  defp parse_components(<<?T, rest::binary>>, acc, _in_time, false),
-    do: parse_components(rest, acc, true, true)
+  defp parse_components(<<?T, rest::binary>>, acc, _in_time, false, _last_rank, _frac),
+    do: parse_components(rest, acc, true, true, -1, false)
 
-  defp parse_components(<<c::utf8, _::binary>> = input, acc, in_time, saw_t)
+  defp parse_components(<<c::utf8, _::binary>> = input, acc, in_time, saw_t, last_rank, _frac)
        when c in ?0..?9 do
     case take_number(input) do
       {:error, _} = err ->
@@ -85,28 +92,33 @@ defmodule Taskweft.Iso8601Duration do
       {:ok, _whole, _milli, raw, ""} ->
         {:error, {:invalid_number, raw}}
 
-      {:ok, whole, milli, raw, <<unit_c::utf8, rest::binary>>} ->
+      {:ok, whole, milli, _raw, <<unit_c::utf8, rest::binary>>} ->
         cond do
           unit_c == ?W and (acc != [] or in_time) ->
             {:error, :mixed_basic_extended}
 
+          Enum.any?(acc, &(&1.unit == :w)) ->
+            {:error, :mixed_basic_extended}
+
           true ->
-            classify_component(whole, milli, raw, unit_c, rest, acc, in_time, saw_t)
+            classify_component(whole, milli, unit_c, rest, acc, in_time, saw_t, last_rank)
         end
     end
   end
 
-  defp parse_components(<<c::utf8, _::binary>>, _acc, _in_time, _saw_t),
+  defp parse_components(<<c::utf8, _::binary>>, _acc, _in_time, _saw_t, _last_rank, _frac),
     do: {:error, {:unexpected_token, <<c::utf8>>}}
 
-  defp classify_component(whole, milli, raw, unit_c, rest, acc, in_time, saw_t) do
+  defp classify_component(whole, milli, unit_c, rest, acc, in_time, saw_t, last_rank) do
     case lookup_unit(unit_c, in_time) do
       {:ok, unit} ->
-        if unit != :s and milli != 0 do
-          {:error, {:invalid_number, raw}}
+        rank = unit_rank(unit)
+
+        if rank <= last_rank do
+          {:error, {:non_canonical_order, unit}}
         else
           comp = %{unit: unit, whole: whole, frac_milli: milli}
-          parse_components(rest, [comp | acc], in_time, saw_t)
+          parse_components(rest, [comp | acc], in_time, saw_t, rank, milli != 0)
         end
 
       {:cross, unit} ->
@@ -120,6 +132,14 @@ defmodule Taskweft.Iso8601Duration do
         {:error, {:unexpected_token, <<unit_c::utf8>>}}
     end
   end
+
+  defp unit_rank(:y), do: 0
+  defp unit_rank(:mo), do: 1
+  defp unit_rank(:d), do: 2
+  defp unit_rank(:w), do: 99
+  defp unit_rank(:h), do: 3
+  defp unit_rank(:mi), do: 4
+  defp unit_rank(:s), do: 5
 
   defp lookup_unit(c, false) do
     cond do
@@ -141,9 +161,13 @@ defmodule Taskweft.Iso8601Duration do
     {whole, raw, after_int} = take_int(input, 0, "")
 
     case after_int do
-      <<?., frac::binary>> ->
+      <<?., d2::utf8, _::binary>> = full when d2 in ?0..?9 ->
+        <<?., frac::binary>> = full
         {milli, raw_with_frac, after_frac} = take_frac(frac, 0, 0, raw <> ".")
         {:ok, whole, milli, raw_with_frac, after_frac}
+
+      <<?., _::binary>> ->
+        {:error, {:invalid_number, raw <> "."}}
 
       _ ->
         {:ok, whole, 0, raw, after_int}
@@ -168,13 +192,4 @@ defmodule Taskweft.Iso8601Duration do
 
   defp pow10(0), do: 1
   defp pow10(n), do: 10 * pow10(n - 1)
-
-  defp check_basic_form(components) do
-    has_w = Enum.any?(components, &(&1.unit == :w))
-
-    cond do
-      has_w and length(components) > 1 -> {:error, :mixed_basic_extended}
-      true -> :ok
-    end
-  end
 end

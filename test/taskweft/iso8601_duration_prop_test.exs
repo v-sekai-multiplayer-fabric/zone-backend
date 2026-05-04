@@ -21,6 +21,7 @@ defmodule Taskweft.Iso8601DurationPropTest do
   use PropCheck
 
   alias Taskweft.Iso8601Duration
+  alias Taskweft.Iso8601DurationSpecOracle, as: Spec
   alias Timex.Parse.Duration.Parsers.ISO8601Parser, as: TimexIso
 
   @numtests 1_000
@@ -72,10 +73,10 @@ defmodule Taskweft.Iso8601DurationPropTest do
       end
     end
 
-    property "arbitrary string → success/error agree (modulo precision)",
+    property "arbitrary string → ours and spec agree on accept/reject",
              [:verbose, numtests: @numtests] do
       forall input <- duration_alphabet_string() do
-        agree_on_milliseconds(input)
+        agree_with_spec(input)
       end
     end
   end
@@ -85,17 +86,82 @@ defmodule Taskweft.Iso8601DurationPropTest do
   describe "exhaustive enumeration" do
     @alphabet ~c"PTYMWDHS0123."
 
-    test "every string of length 0..4 over duration alphabet agrees with Timex" do
+    test "every string of length 0..4 over duration alphabet agrees with spec" do
       mismatches =
         for len <- 0..4,
             input <- enumerate(@alphabet, len),
-            not agree_on_milliseconds(input),
+            not agree_with_spec(input),
             do: input
 
       assert mismatches == [], """
-      Found #{length(mismatches)} mismatches between our parser and Timex.
+      Found #{length(mismatches)} mismatches between our parser and the
+      strict ISO 8601 recogniser.
       First 10: #{inspect(Enum.take(mismatches, 10))}
       """
+    end
+  end
+
+  # ---- Layer 4: adversarial fuzzing -----------------------------------------
+
+  # After the canonical-order + lowest-order-fraction fixes landed, ours is
+  # stricter than Timex on order and on fraction position. The adversarial
+  # properties below switched their oracle from Timex to the strict spec
+  # recogniser — agreement is "ours.accepts ↔ spec.valid?" with `P` as the
+  # only carved-out exception.
+
+  describe "adversarial" do
+    # Mutate valid inputs by inserting / deleting / replacing / swapping a
+    # character. The mutated string usually breaks the grammar; the property
+    # asserts ours and the spec agree on the verdict.
+    property "single-char mutations agree with spec",
+             [:verbose, numtests: @numtests] do
+      forall {components, mutation} <- {valid_components_gen(), mutation_gen()} do
+        base = format_components(components)
+        mutated = apply_mutation(base, mutation)
+        agree_with_spec(mutated)
+      end
+    end
+
+    # Random ASCII printable characters — most of which aren't even in the
+    # duration alphabet. Both should reject the vast majority.
+    property "random printable-ASCII strings agree with spec",
+             [:verbose, numtests: @numtests] do
+      forall input <- printable_ascii_string() do
+        agree_with_spec(input)
+      end
+    end
+
+    # Full duration alphabet including `.`. With the spec-aligned parser,
+    # this is now expected to agree with the spec recogniser exactly
+    # (modulo `P` zero-body).
+    property "full duration alphabet agrees with spec",
+             [:verbose, numtests: @numtests] do
+      forall input <- duration_alphabet_with_dot_string() do
+        agree_with_spec(input)
+      end
+    end
+
+    # Very large integers (up to int64-ish range). Catches overflow and any
+    # integer/float coercion drift. Compared against Timex on milliseconds
+    # since both implementations accept and there's no smaller-unit
+    # divergence in play.
+    property "large integer fields on each unit agree with Timex",
+             [:verbose, numtests: @numtests] do
+      forall {n, unit} <- {range(0, 1_000_000_000), oneof([?Y, ?M, ?W, ?D])} do
+        agree_on_milliseconds("P#{n}#{<<unit::utf8>>}")
+      end
+    end
+
+    # Nested / repeated structures that look almost like a valid duration.
+    property "stuttering inputs (PPP…, PTT…) agree with spec",
+             [:verbose, numtests: @numtests] do
+      forall {head_n, body_n, tail_n} <- {range(0, 5), range(0, 5), range(0, 5)} do
+        input =
+          String.duplicate("P", head_n) <>
+            String.duplicate("T", body_n) <> String.duplicate("D", tail_n)
+
+        agree_with_spec(input)
+      end
     end
   end
 
@@ -155,6 +221,102 @@ defmodule Taskweft.Iso8601DurationPropTest do
   defp duration_alphabet_string do
     let chars <- list(oneof(Enum.map(~c"PTYMWDHS0123", &range(&1, &1)))) do
       List.to_string(chars)
+    end
+  end
+
+  # Adversarial: printable ASCII excluding `.` for the same precision-divergence
+  # reason. The space of valid duration substrings is tiny inside this much
+  # bigger alphabet, so the property mostly exercises the rejection path.
+  defp printable_ascii_string do
+    let chars <- list(such_that(c <- range(33, 126), when: c != ?.)) do
+      List.to_string(chars)
+    end
+  end
+
+  defp duration_alphabet_with_dot_string do
+    let chars <- list(oneof(Enum.map(~c"PTYMWDHS0123.", &range(&1, &1)))) do
+      List.to_string(chars)
+    end
+  end
+
+  # `agree_with_spec` is the gate after canonical-order + lowest-fraction
+  # fixes landed: our parser must produce the same accept/reject verdict as
+  # the strict ISO 8601-1:2019 recogniser, except for the documented `P` =
+  # zero quirk (which we and Timex both still accept).
+  defp agree_with_spec(input) do
+    ours = match?({:ok, _}, Iso8601Duration.parse(input))
+    spec = Spec.valid?(input)
+    ours == spec or input == "P"
+  end
+
+  # Legacy regex catalogue retained for reference; no longer consulted.
+  defp _known_divergence?(input) do
+    cond do
+      Regex.match?(~r/\d\.\d+[YMWDH]/, input) -> true
+      Regex.match?(~r/\.\d{4,}S/, input) -> true
+      true -> false
+    end
+  end
+
+  # Mutations applied to a generated valid duration string. Each variant
+  # picks one position in the input. `apply_mutation/2` clamps out-of-range
+  # indices so generators don't have to know the input length.
+  defp mutation_gen do
+    oneof([
+      {:insert, range(0, 30), oneof(Enum.map(~c"PTYMWDHS0123", &range(&1, &1)))},
+      {:delete, range(0, 30)},
+      {:replace, range(0, 30), oneof(Enum.map(~c"PTYMWDHS0123", &range(&1, &1)))},
+      {:swap, range(0, 30), range(0, 30)}
+    ])
+  end
+
+  defp apply_mutation(s, {:insert, idx, c}) do
+    n = String.length(s)
+    i = if n == 0, do: 0, else: rem(idx, n + 1)
+    {a, b} = String.split_at(s, i)
+    a <> <<c::utf8>> <> b
+  end
+
+  defp apply_mutation(s, {:delete, idx}) do
+    n = String.length(s)
+
+    if n == 0 do
+      s
+    else
+      i = rem(idx, n)
+      {a, b} = String.split_at(s, i)
+      a <> String.slice(b, 1..-1//1)
+    end
+  end
+
+  defp apply_mutation(s, {:replace, idx, c}) do
+    n = String.length(s)
+
+    if n == 0 do
+      <<c::utf8>>
+    else
+      i = rem(idx, n)
+      {a, b} = String.split_at(s, i)
+      a <> <<c::utf8>> <> String.slice(b, 1..-1//1)
+    end
+  end
+
+  defp apply_mutation(s, {:swap, i, j}) do
+    n = String.length(s)
+
+    if n < 2 do
+      s
+    else
+      i = rem(i, n)
+      j = rem(j, n)
+      chars = String.graphemes(s)
+      ci = Enum.at(chars, i)
+      cj = Enum.at(chars, j)
+
+      chars
+      |> List.replace_at(i, cj)
+      |> List.replace_at(j, ci)
+      |> Enum.join()
     end
   end
 
