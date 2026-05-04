@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.toolchain }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: gcc
+          - os: macos-latest
+            toolchain: clang
+          - os: windows-latest
+            toolchain: mingw
+          - os: windows-latest
+            toolchain: msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27'
+          elixir-version: '1.17'
+
+      - name: Install mingw-w64
+        if: matrix.toolchain == 'mingw'
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y
+          $mingwBin = (Get-ChildItem 'C:\ProgramData\mingw64', 'C:\tools\mingw64' -Filter 'mingw32-make.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).Directory.FullName
+          if (-not $mingwBin) { throw 'mingw32-make.exe not found after install' }
+          Add-Content -Path $env:GITHUB_PATH -Value $mingwBin
+
+      - name: Setup MSVC
+        if: matrix.toolchain == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: mix deps.get
+        run: mix deps.get
+
+      - name: mix compile
+        run: mix compile
+
+      - name: Verify NIF artifact (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: test -f priv/libtaskweft_nif.so
+
+      - name: Verify NIF artifact (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'priv\libtaskweft_nif.dll')) { throw 'libtaskweft_nif.dll missing' }
+
+      - name: mix test
+        run: mix test

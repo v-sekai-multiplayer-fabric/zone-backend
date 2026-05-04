@@ -1,7 +1,13 @@
 PRIV_DIR = priv
-NIF_SO   = $(PRIV_DIR)/libtaskweft_nif.so
 
-CXXFLAGS = -std=c++20 -O2 -fPIC -fvisibility=hidden
+ifeq ($(OS),Windows_NT)
+  NIF_EXT = dll
+else
+  NIF_EXT = so
+endif
+NIF_SO   = $(PRIV_DIR)/libtaskweft_nif.$(NIF_EXT)
+
+CXXFLAGS = -std=gnu++20 -O2 -fPIC -fvisibility=hidden
 CPPFLAGS = -I$(ERTS_INCLUDE_DIR) -Istandalone
 
 ifeq ($(shell uname -s),Darwin)
