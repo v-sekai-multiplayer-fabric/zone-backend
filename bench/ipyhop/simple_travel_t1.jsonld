@@ -1,5 +1,5 @@
 {
-  "@context": {"khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/", "domain": "khr:planning/domain/"},
+  "@context": {"vsekai": "https://v-sekai.org/", "domain": "vsekai:planning/domain/"},
   "@type": "domain:Definition",
   "name": "ipyhop_simple_travel_t1",
   "description": "IPyHOP simple_travel task_list_1: alice travels home_a→park by taxi (3-action plan).",
