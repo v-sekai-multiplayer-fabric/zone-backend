@@ -18,9 +18,14 @@ jobs:
             toolchain: gcc
           - os: macos-latest
             toolchain: clang
-          - os: windows-latest
+          # windows-latest currently maps to a win25-vs2026 image that
+          # erlef/setup-beam@v1 does not yet recognize (see
+          # https://github.com/erlef/setup-beam — only win19 / win22 / win25
+          # are accepted as ImageOS values). Pin to windows-2022 until the
+          # action is updated.
+          - os: windows-2022
             toolchain: mingw
-          - os: windows-latest
+          - os: windows-2022
             toolchain: msvc
 
     steps:

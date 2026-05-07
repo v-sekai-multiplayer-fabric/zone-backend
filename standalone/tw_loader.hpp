@@ -677,9 +677,12 @@ inline TwActionFn build_action(const TwValue::Dict &def, const TwValue::Dict &en
             if (!step.is_dict()) return nullptr;
             const auto &s = step.as_dict();
 
+            // Standard glTF Interactivity step keys; legacy "set" / "check"
+            // shorthand still accepted during migration window (issue #50).
             auto eval_it  = s.find("eval");
             auto check_it = s.find("check");
-            auto set_it   = s.find("set");
+            auto set_it   = s.find("pointer/set");
+            if (set_it == s.end()) set_it = s.find("set");
 
             if (eval_it != s.end()) {
                 TwValue result = eval_expr(eval_it->second, params, *new_state, enums);
