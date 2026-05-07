@@ -86,7 +86,8 @@ defmodule Taskweft.JSONLD.Loader do
          :ok <- check_name(doc["name"]),
          :ok <- check_shape(doc),
          :ok <- check_arity(doc),
-         :ok <- check_var_refs(doc) do
+         :ok <- check_var_refs(doc),
+         :ok <- check_no_legacy_steps(doc) do
       :ok
     end
   end
@@ -272,6 +273,90 @@ defmodule Taskweft.JSONLD.Loader do
   end
 
   defp scan_refs(_, _, _), do: :ok
+
+  # Reject the legacy `set` / `check` step shorthand and the legacy
+  # `{"pointer": "/x", "<op>": v}` method-alternative check clause shape.
+  # Both were removed in taskweft-nif (issue #50 phase 3); the action body
+  # now accepts only `{"eval": <node>}` and `{"pointer/set": "/x", ...}`,
+  # and method check arrays accept only `{"eval": <node>}` clauses.
+  defp check_no_legacy_steps(doc) do
+    actions = Map.get(doc, "actions", %{})
+    methods = Map.get(doc, "methods", %{})
+
+    with :ok <- check_action_bodies(actions) do
+      check_method_alts(methods)
+    end
+  end
+
+  defp check_action_bodies(actions) when is_map(actions) do
+    Enum.reduce_while(actions, :ok, fn {name, defn}, _ ->
+      body = Map.get(defn, "body", []) || []
+
+      case Enum.reduce_while(body, :ok, fn step, _ ->
+             case legacy_body_step(step) do
+               nil -> {:cont, :ok}
+               legacy_key -> {:halt, {:error, legacy_body_msg(name, legacy_key)}}
+             end
+           end) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_action_bodies(_), do: :ok
+
+  defp legacy_body_step(%{"set" => _}), do: "set"
+  defp legacy_body_step(%{"check" => v}) when is_binary(v), do: "check"
+  defp legacy_body_step(_), do: nil
+
+  defp legacy_body_msg(action_name, key) do
+    replacement =
+      case key do
+        "set" ->
+          ~s({"pointer/set": "/path", "value": ...})
+
+        "check" ->
+          ~s({"eval": {"type": "math/eq", "a": {"type": "pointer/get", "pointer": "/path"}, "b": ...}})
+      end
+
+    "action #{action_name}: legacy `#{key}` step is no longer supported (taskweft-nif #50 phase 3); use #{replacement}"
+  end
+
+  defp check_method_alts(methods) when is_map(methods) do
+    Enum.reduce_while(methods, :ok, fn {mname, mdef}, _ ->
+      alts = Map.get(mdef, "alternatives", []) || []
+
+      case Enum.reduce_while(alts, :ok, fn alt, _ ->
+             clauses = Map.get(alt, "check", []) || []
+
+             case Enum.reduce_while(clauses, :ok, fn clause, _ ->
+                    case legacy_check_clause(clause) do
+                      nil -> {:cont, :ok}
+                      _ -> {:halt, {:error, legacy_alt_check_msg(mname)}}
+                    end
+                  end) do
+               :ok -> {:cont, :ok}
+               err -> {:halt, err}
+             end
+           end) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_method_alts(_), do: :ok
+
+  defp legacy_check_clause(%{"pointer" => _} = c) do
+    if Map.has_key?(c, "eval"), do: nil, else: :legacy
+  end
+
+  defp legacy_check_clause(_), do: nil
+
+  defp legacy_alt_check_msg(method_name) do
+    ~s/method #{method_name}: legacy `{"pointer": "\/x", "<op>": v}` check clause is no longer supported (taskweft-nif #50 phase 3); use {"eval": {"type": "math\/<op>", "a": {"type": "pointer\/get", "pointer": "\/x"}, "b": v}}/
+  end
 
   defp read_file(path) do
     case File.read(path) do
