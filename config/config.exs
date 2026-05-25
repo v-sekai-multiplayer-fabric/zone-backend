@@ -119,26 +119,30 @@ config :uro, Uro.Repo.Migration,
   socket_options: [:inet6],
   ssl: crdb_admin_ssl
 
-config :uro, Uro.Endpoint,
-  adapter: Bandit.PhoenixAdapter,
-  url: Map.take(url, [:scheme, :host, :path]),
-  # url:
-  #   "URL"
-  #   |> Helpers.get_env("https://example.com/api/")
-  #   |> URI.new!()
-  #   |> Map.take([:scheme, :host, :path]),
+https_opts =
+  case {System.get_env("HTTPS_CERTFILE"), System.get_env("HTTPS_KEYFILE")} do
+    {cert, key} when is_binary(cert) and is_binary(key) ->
+      [https: [port: 443, certfile: cert, keyfile: key]]
 
-  http: [
-    port:
-      "PORT"
-      |> Helpers.get_env("4000")
-      |> String.to_integer()
-  ],
-  secret_key_base:
+    _ ->
+      []
+  end
+
+config :uro, Uro.Endpoint,
+  [{:adapter, Bandit.PhoenixAdapter},
+   {:url, Map.take(url, [:scheme, :host, :path])},
+   {:http, [
+     port:
+       "PORT"
+       |> Helpers.get_env("4000")
+       |> String.to_integer()
+   ]},
+   {:secret_key_base,
     Helpers.get_env(
       "PHOENIX_KEY_BASE",
       "bNDe+pg86uL938fQA8QGYCJ4V7fE5RAxoQ8grq9drPpO7mZ0oEMSNapKLiA48smR"
-    )
+    )}
+  ] ++ https_opts
 
 # pubsub_server: Uro.PubSub,
 # live_view: [signing_salt: "0dBPUwA2"]
