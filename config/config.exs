@@ -131,12 +131,14 @@ https_opts =
       []
   end
 
-config :uro, Uro.Endpoint,
-  [{:adapter, Bandit.PhoenixAdapter},
-   {:url, Map.take(url, [:scheme, :host, :path])},
-   {:http, [port: http_port]},
-   {:secret_key_base, get_env.("PHOENIX_KEY_BASE", nil)}
-  ] ++ https_opts
+config :uro,
+       Uro.Endpoint,
+       [
+         {:adapter, Bandit.PhoenixAdapter},
+         {:url, Map.take(url, [:scheme, :host, :path])},
+         {:http, [port: http_port]},
+         {:secret_key_base, get_env.("PHOENIX_KEY_BASE", nil)}
+       ] ++ https_opts
 
 # pubsub_server: Uro.PubSub,
 # live_view: [signing_salt: "0dBPUwA2"]
