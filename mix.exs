@@ -79,6 +79,7 @@ defmodule Uro.MixProject do
       {:ex_marcel, "~> 0.1.0"},
       {:taskweft, github: "V-Sekai-fire/multiplayer-fabric-taskweft"},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
+      {:uro_loop, path: "apps/uro_loop"},
 
       # OpenTelemetry — ships spans + logs to multiplayer-fabric-observability
       {:opentelemetry, "~> 1.6"},
