@@ -28,6 +28,7 @@ authentication. Deployed on Fly.io as `multiplayer-fabric-uro`.
 | `PHOENIX_KEY_BASE` | 64-byte secret key base |
 | `JOKEN_SIGNER` | JWT signing key |
 | `SIGNUP_API_KEY` | Client signup API key |
+| `LOOP_API_KEY` | Loop-server profile commit API key (`POST /api/v1/loop/commit`) |
 
 ### Database role separation (ReBAC)
 

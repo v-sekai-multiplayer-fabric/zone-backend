@@ -118,6 +118,8 @@ defmodule Uro.Router do
 
     resources("/shards", Uro.ZoneController, only: [:index, :create, :update, :delete])
 
+    post "/loop/commit", Uro.LoopController, :commit
+
     scope "/admin" do
       pipe_through([:authenticated_admin])
 
