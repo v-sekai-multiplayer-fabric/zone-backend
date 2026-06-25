@@ -14,7 +14,10 @@ defmodule Uro.Repo.Migrations.AddLoopProfiles do
 
     create table(:loop_items, primary_key: false) do
       add :id, :binary_id, primary_key: true, null: false
-      add :loop_player_id, references(:loop_players, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :loop_player_id, references(:loop_players, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :item, :integer, null: false
       timestamps()
     end
