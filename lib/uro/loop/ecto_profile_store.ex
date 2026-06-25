@@ -21,6 +21,7 @@ defmodule Uro.Loop.EctoProfileStore do
       Enum.each(profiles, fn %{"name" => name, "items" => items} ->
         player = upsert_player(name)
         Repo.delete_all(from i in Item, where: i.loop_player_id == ^player.id)
+
         Enum.each(items, fn item_id ->
           Repo.insert!(%Item{loop_player_id: player.id, item: item_id})
         end)

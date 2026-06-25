@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 K. S. Ernest (iFire) Lee
+#
+# Gate: verifies that aria_storage (Elixir) and desync (Go) are mutually
+# compatible for the casync blob-index format.
+#
+# Two round-trips are checked:
+#   1. aria_storage make  → desync extract   (Elixir chunks readable by Go)
+#   2. desync make        → aria_storage decode (Go chunks readable by Elixir)
+#
+# Runs `mix run --no-start` so the Uro application (and its database) is never
+# started — this job needs no CockroachDB instance.
+name: casync interop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: casync-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  interop:
+    name: aria_storage ↔ desync
+    runs-on: ubuntu-latest
+
+    env:
+      MIX_ENV: dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "28"
+
+      - name: Cache Mix deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-casync-interop-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-casync-interop-
+
+      - name: Install desync v1.0.3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.0.3 \
+            -R folbricht/desync \
+            -p "desync_1.0.3_linux_amd64.tar.gz" \
+            -D /tmp/desync-dl
+          tar -xzf /tmp/desync-dl/desync_1.0.3_linux_amd64.tar.gz \
+            -C /usr/local/bin desync
+          desync help
+
+      - name: Install Mix dependencies
+        run: mix deps.get
+
+      - name: Compile (aria_storage + deps only, no Uro app)
+        run: mix deps.compile
+
+      - name: casync interop check
+        run: mix run --no-start priv/interop/casync_check.exs

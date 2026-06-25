@@ -243,7 +243,7 @@ defmodule Uro.ZoneController do
     `x-webtransport` extension for the complete connection procedure and
     `CMD_INSTANCE_ASSET` wire-protocol specification.
     """,
-    extensions: %{"x-webtransport" => @webtransport_extension},
+    "x-webtransport": @webtransport_extension,
     responses: [
       ok: {
         "",
