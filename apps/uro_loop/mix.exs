@@ -18,8 +18,6 @@ defmodule UroLoop.MixProject do
   end
 
   defp deps do
-    [
-      {:ecto, "~> 3.13"}
-    ]
+    []
   end
 end

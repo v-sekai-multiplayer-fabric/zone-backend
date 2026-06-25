@@ -5,7 +5,7 @@ defmodule UroLoop do
   Hexagonal core for the game-loop cluster.
 
   No Ecto Repo, no HTTP, no Phoenix — pure dispatch through the
-  `UroLoop.ProfileStore` port. The storage adapter is resolved at call time
+  `UroLoop.Ports.ProfileStore` port. The storage adapter is resolved at call time
   from application config so callers (and tests) can substitute a fake:
 
       # config/config.exs (zone-backend)

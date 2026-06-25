@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
-defmodule UroLoop.ProfileStore do
+defmodule UroLoop.Ports.ProfileStore do
   @moduledoc """
-  Port (hexagonal boundary) for persisting loop player profiles.
+  Output port for persisting loop player profiles.
 
   Implement this behaviour in an adapter to supply storage. The default
   adapter is `Uro.Loop.EctoProfileStore` (CockroachDB via Ecto), which
