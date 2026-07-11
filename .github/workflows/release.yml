@@ -21,16 +21,23 @@ jobs:
       matrix:
         include:
           # Each triplet builds on a native runner so the C++20 NIF compiles
-          # for that OS/arch rather than being cross-compiled.
+          # for that OS/arch rather than being cross-compiled. `zig` is the
+          # Zig 0.15.2 archive basename that Burrito's backend needs.
           - target: windows_amd64
             os: windows-latest
             ext: ".exe"
+            zig: zig-x86_64-windows-0.15.2
+            zig_ext: zip
           - target: linux_amd64
             os: ubuntu-latest
             ext: ""
+            zig: zig-x86_64-linux-0.15.2
+            zig_ext: tar.xz
           - target: macos_arm64
             os: macos-latest
             ext: ""
+            zig: zig-aarch64-macos-0.15.2
+            zig_ext: tar.xz
 
     env:
       MIX_ENV: prod
@@ -46,10 +53,19 @@ jobs:
           elixir-version: "1.17"
           otp-version: "27"
 
-      - name: Set up Zig (Burrito backend)
-        uses: mlugg/setup-zig@v1
-        with:
-          version: "0.15.2"
+      - name: Set up Zig 0.15.2 (Burrito backend)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "zig.${{ matrix.zig_ext }}" \
+            "https://ziglang.org/download/0.15.2/${{ matrix.zig }}.${{ matrix.zig_ext }}"
+          if [ "${{ matrix.zig_ext }}" = "zip" ]; then
+            unzip -q "zig.${{ matrix.zig_ext }}"
+          else
+            tar xf "zig.${{ matrix.zig_ext }}"
+          fi
+          echo "$PWD/${{ matrix.zig }}" >> "$GITHUB_PATH"
+          "$PWD/${{ matrix.zig }}/zig" version
 
       - name: Stamp the build commit
         shell: bash
