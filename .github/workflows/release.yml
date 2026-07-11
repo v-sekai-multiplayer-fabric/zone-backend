@@ -16,6 +16,10 @@ jobs:
   build:
     name: burrito ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # macOS Burrito builds currently hit a zig/libSystem link issue
+    # (undefined _sigemptyset/_waitpid) — kept non-blocking so the Linux and
+    # Windows binaries still build and attach. Tracked under #53.
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +42,7 @@ jobs:
             ext: ""
             zig: zig-aarch64-macos-0.15.2
             zig_ext: tar.xz
+            experimental: true
 
     env:
       MIX_ENV: prod
@@ -53,16 +58,25 @@ jobs:
           elixir-version: "1.17"
           otp-version: "27"
 
-      - name: Install xz (Burrito compresses the payload with it)
+      - name: Ensure xz is available (Burrito compresses the payload with it)
         shell: bash
         run: |
           set -euo pipefail
           case "${{ runner.os }}" in
-            Windows) choco install xz --no-progress -y ;;
-            Linux)   sudo apt-get update -qq && sudo apt-get install -y xz-utils ;;
-            macOS)   brew list xz >/dev/null 2>&1 || brew install xz ;;
+            Windows)
+              # xz ships with the runner's preinstalled MSYS2.
+              echo "C:\msys64\usr\bin" >> "$GITHUB_PATH"
+              "/c/msys64/usr/bin/xz.exe" --version
+              ;;
+            Linux)
+              sudo apt-get update -qq && sudo apt-get install -y xz-utils
+              xz --version
+              ;;
+            macOS)
+              brew list xz >/dev/null 2>&1 || brew install xz
+              xz --version
+              ;;
           esac
-          xz --version
 
       - name: Set up Zig 0.15.2 (Burrito backend)
         shell: bash
@@ -88,15 +102,17 @@ jobs:
       - name: Build standalone binary
         run: mix release taskweft --overwrite
 
-      - name: Smoke test (plan + mcp handshake)
+      - name: Smoke test (version + plan through the bundled NIF)
         shell: bash
         run: |
+          set -euo pipefail
           bin="burrito_out/taskweft_${{ matrix.target }}${{ matrix.ext }}"
           chmod +x "$bin" || true
-          # `version` self-extracts on first run and must print the stamp.
-          "$bin" version | grep -E "^taskweft [0-9]+\.[0-9]+\.[0-9]+"
+          # Redirect stdin from /dev/null and bound with `timeout` so a stray
+          # read can never hang the job; `version` self-extracts on first run.
+          timeout 120 "$bin" version </dev/null | grep -E "^taskweft [0-9]+\.[0-9]+\.[0-9]+"
           # `plan` exercises the bundled NIF loading from the self-extract dir.
-          "$bin" plan priv/smoke/blocks_world.jsonld | grep -E '^\[\['
+          timeout 120 "$bin" plan priv/smoke/blocks_world.jsonld </dev/null | grep -E '^\[\['
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
