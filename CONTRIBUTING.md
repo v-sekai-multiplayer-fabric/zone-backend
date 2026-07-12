@@ -37,4 +37,3 @@ moduledocs:
 - `Taskweft.NIF` — HRR type boundary
 - `Taskweft.MCP.Server` — MCP tools, DSPy training-time integration
 - `Taskweft.MCP.Client` — peer connection specs
-- `Taskweft.Solve` — peer lifecycle and configuration
