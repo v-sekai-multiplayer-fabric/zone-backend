@@ -3,7 +3,7 @@
 
 # multiplayer-fabric-taskweft
 
-The planner server exposes the `plan`, `replan`, `simulate` tools and every bundled `priv/plans/{domains,problems}/*.jsonld` as a
+The planner server exposes the `plan`, `replan` tools and every bundled `priv/plans/{domains,problems}/*.jsonld` as a
 resource.
 
 Download the binary for your platform from the
