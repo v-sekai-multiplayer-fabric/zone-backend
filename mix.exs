@@ -105,11 +105,6 @@ defmodule Taskweft.MixProject do
       {:taskweft_rebac, github: "V-Sekai-fire/taskweft-rebac"},
       {:taskweft_mcp_client, github: "V-Sekai-fire/taskweft-mcp-client"},
       {:taskweft_mcp, github: "V-Sekai-fire/taskweft-mcp"},
-      # Override the transitive taskweft-plans pin (carried by taskweft_mcp) up
-      # to main. taskweft-plans main migrated its domains to the glTF
-      # Interactivity node shape (pointer/set + eval); this matches the bumped
-      # taskweft_nif above and this app's Loader.validate (issues #66/#67).
-      {:taskweft_plans, github: "V-Sekai-fire/taskweft-plans", override: true},
       {:ex_mcp, "~> 1.0.0-rc", override: true},
       {:burrito, "~> 1.5"},
       {:json_ld, "~> 1.0"},
