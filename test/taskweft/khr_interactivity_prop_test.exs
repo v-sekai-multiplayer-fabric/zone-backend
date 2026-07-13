@@ -35,7 +35,7 @@ defmodule Taskweft.KHRInteractivityPropTest do
           "params" => [],
           "body" =>
             eval_steps ++
-              [%{"set" => "/ok/v", "value" => true}]
+              [%{"pointer/set" => "/ok/v", "value" => true}]
         }
       },
       "tasks" => [["a_check"]]

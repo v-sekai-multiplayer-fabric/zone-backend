@@ -28,14 +28,16 @@ jobs:
           elixir-version: "1.17"
           otp-version: "27"
 
+      # Cache fetched dep sources only, not _build: mix will not recompile a
+      # git dep whose app version is unchanged even when its locked sha moves,
+      # so a cached _build silently runs a stale NIF against new domains. The
+      # C++20 NIF build is quick, so compiling fresh each run keeps it correct.
       - name: Cache Mix deps
         uses: actions/cache@v6
         with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-taskweft-mix-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-taskweft-mix-
+          path: deps
+          key: ${{ runner.os }}-taskweft-deps-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-taskweft-deps-
 
       - name: Install dependencies
         run: mix deps.get

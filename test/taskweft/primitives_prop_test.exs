@@ -29,6 +29,13 @@ defmodule Taskweft.PrimitivesPropTest do
     end
   end
 
+  # New-shape (glTF Interactivity) action-body clause builders. taskweft-nif
+  # dropped the `check`/`set` shorthand (taskweft-nif #6/#7), so a state read is
+  # a `math/<op>` comparison over a `pointer/get`, and a write is `pointer/set`.
+  defp getp(ptr), do: %{"type" => "pointer/get", "pointer" => ptr}
+  defp cmp(ptr, op, v), do: %{"eval" => %{"type" => "math/#{op}", "a" => getp(ptr), "b" => v}}
+  defp set(ptr, v), do: %{"pointer/set" => ptr, "value" => v}
+
   # ---- Primitive 3: state.get ------------------------------------------------
 
   property "state.get: a check against an init value passes" do
@@ -41,7 +48,7 @@ defmodule Taskweft.PrimitivesPropTest do
           "actions" => %{
             "a_check" => %{
               "params" => [],
-              "body" => [%{"check" => "/store/#{key}", "eq" => value}]
+              "body" => [cmp("/store/#{key}", "eq", value)]
             }
           },
           "methods" => %{},
@@ -68,11 +75,11 @@ defmodule Taskweft.PrimitivesPropTest do
             "actions" => %{
               "a_set" => %{
                 "params" => [],
-                "body" => [%{"set" => "/store/#{key}", "value" => new_val}]
+                "body" => [set("/store/#{key}", new_val)]
               },
               "a_check_new" => %{
                 "params" => [],
-                "body" => [%{"check" => "/store/#{key}", "eq" => new_val}]
+                "body" => [cmp("/store/#{key}", "eq", new_val)]
               }
             },
             "methods" => %{},
@@ -95,7 +102,7 @@ defmodule Taskweft.PrimitivesPropTest do
       "actions" => %{
         "a_check" => %{
           "params" => [],
-          "body" => [%{"check" => "/store/v", op => rhs}]
+          "body" => [cmp("/store/v", op, rhs)]
         }
       },
       "methods" => %{},
@@ -157,15 +164,15 @@ defmodule Taskweft.PrimitivesPropTest do
             "actions" => %{
               "a_clobber_x" => %{
                 "params" => [],
-                "body" => [%{"set" => "/store/x", "value" => stash_value}]
+                "body" => [set("/store/x", stash_value)]
               },
               "a_unsatisfiable" => %{
                 "params" => [],
-                "body" => [%{"check" => "/store/y", "eq" => 1}]
+                "body" => [cmp("/store/y", "eq", 1)]
               },
               "a_assert_x_zero" => %{
                 "params" => [],
-                "body" => [%{"check" => "/store/x", "eq" => 0}]
+                "body" => [cmp("/store/x", "eq", 0)]
               }
             },
             "methods" => %{

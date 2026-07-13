@@ -13,6 +13,8 @@ defmodule Taskweft.JSONLD.LoaderTest do
 
   alias Taskweft.JSONLD.Loader
 
+  @plans :code.priv_dir(:taskweft_plans) |> Path.join("plans")
+
   defp base(extra),
     do: Map.merge(%{"@type" => "domain:Problem", "name" => "t"}, extra)
 
@@ -143,46 +145,57 @@ defmodule Taskweft.JSONLD.LoaderTest do
     end
   end
 
-  # A self-contained multigoal domain in the `check`/`set` action shape the
-  # pinned NIF executes, so this test does not depend on the bundled fixtures
-  # (whose domains have since migrated to the newer `pointer/set` node shape
-  # that the pinned NIF cannot run). It drives the RECTGTN 'N' branch:
-  # TwMultiGoal splits into one TwGoal per binding, each dispatched to the
-  # `switch` goal method. The bundled taskweft-plans fixture covers the harder
-  # blocks_world backjump; this proves the shape plans and replays soundly.
-  #
-  # Exercises the compiled NIF: green in CI (which builds taskweft_nif from
-  # source). A stale bundled DLL returns "no_plan", as the existing CLI
-  # planner tests already do.
-  @multigoal_domain ~s({
-    "@context": {"khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/", "domain": "khr:planning/domain/"},
-    "@type": "domain:Definition",
-    "name": "switches_multigoal",
-    "variables": [{"name": "switch", "init": {"x": false, "y": false}}],
-    "actions": {
-      "flip_on": {"params": ["s"], "body": [
-        {"check": "/switch/{s}", "eq": false},
-        {"set": "/switch/{s}", "value": true}
-      ]}
-    },
-    "goals": {
-      "switch": {"params": ["s", "val"], "alternatives": [
-        {"name": "turn_on", "subtasks": [["flip_on", "{s}"]]}
-      ]}
-    },
-    "tasks": [{"multigoal": {"switch": {"x": true, "y": true}}}]
-  })
+  describe "bundled fixtures round-trip through the loader" do
+    test "blocks_world_goal problem file validates" do
+      path = Path.join([@plans, "problems", "blocks_world_goal.jsonld"])
+      assert {:ok, _json} = Loader.load_file(path)
+    end
 
+    test "blocks_world_multigoal problem file validates" do
+      path = Path.join([@plans, "problems", "blocks_world_multigoal.jsonld"])
+      assert {:ok, _json} = Loader.load_file(path)
+    end
+  end
+
+  # Drives the RECTGTN 'N' branch through the compiled NIF against the bundled
+  # blocks_world_multigoal fixture: TwMultiGoal splits into one TwGoal per pos
+  # binding and backjumps over which to satisfy first. Merges domain + problem
+  # the way TwLoader::load_file_pair does. Exercises the compiled NIF (green in
+  # CI, which builds taskweft_nif from source; a stale bundled DLL returns
+  # "no_plan", as the existing CLI planner tests do).
   describe "multigoal plans soundly through the NIF" do
-    test "replan reports every step completed and no failure" do
-      plan_json = Taskweft.NIF.plan(@multigoal_domain)
-      steps = Jason.decode!(plan_json)
-      assert length(steps) == 2
+    setup do
+      domain = read_json(Path.join([@plans, "domains", "blocks_world.jsonld"]))
+      problem = read_json(Path.join([@plans, "problems", "blocks_world_multigoal.jsonld"]))
+      {:ok, merged: Jason.encode!(merge(domain, problem))}
+    end
 
-      assert {:ok, out} = Taskweft.replan(@multigoal_domain, plan_json, -1)
+    test "replan reports every step completed and no failure", %{merged: merged} do
+      plan_json = Taskweft.NIF.plan(merged)
+      steps = Jason.decode!(plan_json)
+      assert steps != []
+
+      assert {:ok, out} = Taskweft.replan(merged, plan_json, -1)
       env = Jason.decode!(out)
       assert env["fail_step"] == -1
       assert env["completed_steps"] == length(steps)
     end
+  end
+
+  defp read_json(path), do: path |> File.read!() |> Jason.decode!()
+
+  # Mirror TwLoader::load_file_pair for this case: the problem's state
+  # variables override the domain's by name and its non-empty task list
+  # replaces the domain's. Actions, methods, and goal methods come from the
+  # domain unchanged.
+  defp merge(domain, problem) do
+    dom_vars = List.wrap(domain["variables"])
+    prob_vars = List.wrap(problem["variables"])
+    overridden = MapSet.new(prob_vars, & &1["name"])
+    kept = Enum.reject(dom_vars, &MapSet.member?(overridden, &1["name"]))
+
+    domain
+    |> Map.put("variables", kept ++ prob_vars)
+    |> Map.put("tasks", problem["tasks"])
   end
 end
