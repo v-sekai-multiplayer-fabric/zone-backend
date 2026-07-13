@@ -97,6 +97,7 @@ defmodule Taskweft.MixProject do
       {:taskweft_rebac, github: "V-Sekai-fire/taskweft-rebac"},
       {:taskweft_mcp_client, github: "V-Sekai-fire/taskweft-mcp-client"},
       {:taskweft_mcp, github: "V-Sekai-fire/taskweft-mcp"},
+      {:ex_mcp, "~> 1.0.0-rc", override: true},
       {:burrito, "~> 1.5"},
       {:json_ld, "~> 1.0"},
       {:rdf, "~> 3.0"},
