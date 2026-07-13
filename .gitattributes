@@ -4,3 +4,8 @@
 scripts/nif-compile text eol=lf
 scripts/zig-cc text eol=lf
 scripts/zig-cxx text eol=lf
+
+# Elixir sources must stay LF so `mix format --check-formatted` passes on
+# Linux CI regardless of the committer's platform.
+*.ex text eol=lf
+*.exs text eol=lf
