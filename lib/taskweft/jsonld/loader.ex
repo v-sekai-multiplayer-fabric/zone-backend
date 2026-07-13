@@ -40,6 +40,7 @@ defmodule Taskweft.JSONLD.Loader do
   @valid_types [
     "domain:Definition",
     "domain:MetaDomain",
+    "domain:Problem",
     "udon:Vocabulary",
     "udon:VocabularyModule"
   ]
@@ -75,16 +76,18 @@ defmodule Taskweft.JSONLD.Loader do
   @doc """
   Validate that a decoded JSON-LD document is a well-formed planning domain.
 
-  Runs in order: `@type`, `name`, top-level field shapes, action/method
-  call arity, variable substitution references. The first failure is
-  returned; subsequent checks rely on the shape established by earlier
-  ones (e.g. arity assumes `actions` is a map).
+  Runs in order: `@type`, `name`, top-level field shapes, goal/multigoal
+  shapes, action/method call arity, variable substitution references. The
+  first failure is returned; subsequent checks rely on the shape established
+  by earlier ones (e.g. arity assumes `actions` is a map).
   """
   @spec validate(map(), map()) :: :ok | {:error, String.t()}
   def validate(doc, _ctx) when is_map(doc) do
     with :ok <- check_type(doc["@type"]),
          :ok <- check_name(doc["name"]),
          :ok <- check_shape(doc),
+         :ok <- check_goals(doc),
+         :ok <- check_multigoal_tasks(doc),
          :ok <- check_arity(doc),
          :ok <- check_var_refs(doc),
          :ok <- check_no_legacy_steps(doc) do
@@ -124,6 +127,96 @@ defmodule Taskweft.JSONLD.Loader do
           do: :ok,
           else: {:error, "expected #{key} to be #{expected_label}, got #{json_type(value)}"}
     end
+  end
+
+  # `goals` (RECTGTN 'T') has two shapes the NIF accepts:
+  #   * a domain-style **object** keyed by state var name — goal *methods*,
+  #     validated structurally like `methods` (nothing fixed to assert here);
+  #   * a problem-style **array** of `{"pointer": "/var/key", "eq": desired}`
+  #     bindings that the loader folds into one conjunctive `TwGoal` task.
+  # Only the array form has a fixed binding shape, so that is what we check.
+  defp check_goals(doc) do
+    case Map.get(doc, "goals") do
+      nil -> :ok
+      goals when is_map(goals) -> :ok
+      goals when is_list(goals) -> check_goal_bindings(goals)
+      other -> {:error, "expected goals to be object or array, got #{json_type(other)}"}
+    end
+  end
+
+  defp check_goal_bindings(bindings) do
+    bindings
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {binding, i}, _ ->
+      case check_goal_binding(binding, i) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_goal_binding(%{"pointer" => p} = b, i) when is_binary(p) do
+    if Map.has_key?(b, "eq"),
+      do: :ok,
+      else: {:error, ~s(goals[#{i}]: binding must have an "eq" field)}
+  end
+
+  defp check_goal_binding(%{"pointer" => _}, i),
+    do: {:error, ~s(goals[#{i}]: "pointer" must be a string)}
+
+  defp check_goal_binding(b, i) when is_map(b),
+    do: {:error, ~s(goals[#{i}]: binding must have a "pointer" field)}
+
+  defp check_goal_binding(other, i),
+    do: {:error, "goals[#{i}]: expected object, got #{json_type(other)}"}
+
+  # A `tasks` entry is either a `[name, args...]` call (checked by check_arity)
+  # or a multigoal object (RECTGTN 'N') `{"multigoal": {var: {key: desired,
+  # ...}, ...}}`. Validate the object form's shape here; anything else that is
+  # neither a call array nor a multigoal object is rejected.
+  defp check_multigoal_tasks(doc) do
+    doc
+    |> Map.get("tasks", [])
+    |> List.wrap()
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {task, i}, _ ->
+      case check_task_shape(task, i) do
+        :ok -> {:cont, :ok}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_task_shape(task, _i) when is_list(task), do: :ok
+
+  defp check_task_shape(%{"multigoal" => mg}, i) when is_map(mg),
+    do: check_multigoal_bindings(mg, i)
+
+  defp check_task_shape(%{"multigoal" => other}, i),
+    do: {:error, "tasks[#{i}]: \"multigoal\" must be an object, got #{json_type(other)}"}
+
+  defp check_task_shape(task, i) when is_map(task),
+    do: {:error, "tasks[#{i}]: object task must be a {\"multigoal\": {...}} entry"}
+
+  defp check_task_shape(other, i),
+    do: {:error, "tasks[#{i}]: expected call array or multigoal object, got #{json_type(other)}"}
+
+  defp check_multigoal_bindings(mg, i) when map_size(mg) == 0,
+    do: {:error, "tasks[#{i}]: multigoal must bind at least one variable"}
+
+  defp check_multigoal_bindings(mg, i) do
+    Enum.reduce_while(mg, :ok, fn {var, kv}, _ ->
+      cond do
+        not is_map(kv) ->
+          {:halt, {:error, "tasks[#{i}]: multigoal[#{var}] must be an object of key→desired"}}
+
+        map_size(kv) == 0 ->
+          {:halt, {:error, "tasks[#{i}]: multigoal[#{var}] must bind at least one key"}}
+
+        true ->
+          {:cont, :ok}
+      end
+    end)
   end
 
   defp json_type(v) when is_map(v), do: "object"
