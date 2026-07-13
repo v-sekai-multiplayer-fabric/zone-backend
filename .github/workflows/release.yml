@@ -28,7 +28,7 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true" # sccache caches the NIF compile via GitHub cache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
@@ -49,14 +49,14 @@ jobs:
       # stayed at the old version). A fresh _build each run keeps the version
       # honest; the expensive NIF C++ compile is still cached via sccache.
       - name: Cache mix deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: deps
           key: ${{ runner.os }}-deps-${{ hashFiles('mix.lock') }}
           restore-keys: ${{ runner.os }}-deps-
 
       - name: Cache zig + Burrito downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.local/zig-0.15.2
@@ -89,7 +89,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15 # backstop; macOS has no `timeout` command
     steps:
-      - uses: actions/checkout@v4 # provides priv/smoke/blocks_world.jsonld
+      - uses: actions/checkout@v7 # provides priv/smoke/blocks_world.jsonld
 
       - name: Download built binaries
         uses: actions/download-artifact@v4
@@ -122,7 +122,7 @@ jobs:
       TASKWEFT_BURRITO: "1"
       BURRITO_TARGET: windows_amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
@@ -144,7 +144,7 @@ jobs:
       # stayed at the old version). A fresh _build each run keeps the version
       # honest; the expensive NIF C++ compile is still cached via sccache.
       - name: Cache mix deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: deps
           key: ${{ runner.os }}-deps-${{ hashFiles('mix.lock') }}
