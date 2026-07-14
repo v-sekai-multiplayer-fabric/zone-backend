@@ -101,10 +101,10 @@ defmodule Taskweft.MixProject do
 
   defp deps do
     [
-      {:taskweft_nif, github: "V-Sekai-fire/taskweft-nif"},
-      {:taskweft_rebac, github: "V-Sekai-fire/taskweft-rebac"},
-      {:taskweft_mcp_client, github: "V-Sekai-fire/taskweft-mcp-client"},
-      {:taskweft_mcp, github: "V-Sekai-fire/taskweft-mcp"},
+      {:taskweft_nif, github: "taskweft/nif"},
+      {:taskweft_rebac, github: "taskweft/rebac"},
+      {:taskweft_mcp_client, github: "taskweft/mcp-client"},
+      {:taskweft_mcp, github: "taskweft/mcp"},
       {:ex_mcp, "~> 1.0.0-rc", override: true},
       {:burrito, "~> 1.5"},
       {:json_ld, "~> 1.0"},

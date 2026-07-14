@@ -6,8 +6,8 @@
     "name": "K. S. Ernest (iFire) Lee",
     "email": "fire@users.noreply.github.com"
   },
-  "homepage": "https://github.com/V-Sekai-fire/multiplayer-fabric-taskweft",
-  "repository": "https://github.com/V-Sekai-fire/multiplayer-fabric-taskweft",
+  "homepage": "https://github.com/taskweft/taskweft",
+  "repository": "https://github.com/taskweft/taskweft",
   "license": "MIT",
   "keywords": ["elixir", "nif", "htn", "hrr", "rebac", "propcheck", "taskweft"]
 }

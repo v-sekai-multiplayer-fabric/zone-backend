@@ -14,7 +14,7 @@ domain may contain, and — for each kind — the **golden** (accepted) and
 The canonical model type is `RECTGTNNode` in `lean/Planner/Types.lean`; the
 runtime is `deps/taskweft_nif/standalone/tw_planner.hpp`. This page is the
 MCP-facing contract — keep it aligned with the `plan` tool's `domain_json`
-description in `taskweft-mcp` (`Taskweft.MCP.Server`).
+description in `taskweft/mcp` (`Taskweft.MCP.Server`).
 
 ## What each letter means
 

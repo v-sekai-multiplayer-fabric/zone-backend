@@ -12,7 +12,7 @@ three task kinds (`TwCall`, `TwGoal`, `TwMultiGoal`), and their golden/rejected
 JSON-LD shapes.
 
 Download the binary from the
-[latest release](https://github.com/V-Sekai-fire/multiplayer-fabric-taskweft/releases).
+[latest release](https://github.com/taskweft/taskweft/releases).
 
 ```sh
 taskweft plan <domain.jsonld>        # plan: from a file, --problem <d> <p>, or stdin
