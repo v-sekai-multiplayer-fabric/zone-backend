@@ -527,6 +527,65 @@ inline TwValue eval_node(const TwValue::Dict &expr, const Params &params,
         return var.empty() ? TwValue{} : state.get_nested(var, key);
     }
 
+    // math/combine3x3 — pack 9 named floats (row-major) into a 3x3 matrix.
+    // Structural: needs >4 named inputs, beyond the (a,b,c,d) table convention.
+    if (type == "combine3x3") {
+        static const char *keys[9] = {"a","b","c","d","e","f","g","h","i"};
+        TwValue::Array out; out.reserve(9);
+        for (auto *k : keys) out.push_back(get(k));
+        return TwValue(std::move(out));
+    }
+
+    // math/combine4x4 — pack 16 named floats (row-major) into a 4x4 matrix.
+    if (type == "combine4x4") {
+        static const char *keys[16] = {"a","b","c","d","e","f","g","h",
+                                        "i","j","k","l","m","n","o","p"};
+        TwValue::Array out; out.reserve(16);
+        for (auto *k : keys) out.push_back(get(k));
+        return TwValue(std::move(out));
+    }
+
+    // math/quatFromAngles: {"type":"math/quatFromAngles","configuration":{"order":"yxz"},"x":..,"y":..,"z":..}
+    // Structural: "order" is a configuration string, not a value socket.
+    if (type == "quatFromAngles") {
+        std::string order = "yxz";
+        auto cfg_it = expr.find("configuration");
+        if (cfg_it != expr.end() && cfg_it->second.is_dict()) {
+            auto ord_it = cfg_it->second.as_dict().find("order");
+            if (ord_it != cfg_it->second.as_dict().end() && ord_it->second.is_string()) {
+                const std::string &o = ord_it->second.as_string();
+                static const char *valid[6] = {"xyz","xzy","yxz","yzx","zxy","zyx"};
+                for (auto *v : valid) if (o == v) { order = o; break; }
+            }
+        }
+        double x = get("x").as_number(), y = get("y").as_number(), z = get("z").as_number();
+        // Per-axis quaternions (half-angle), intrinsic Tait-Bryan composition:
+        // apply axes left-to-right in `order` via Hamilton product q = q0 * q1 * q2.
+        auto axis_quat = [](char axis, double a) -> TwValue::Array {
+            double s = std::sin(0.5 * a), c = std::cos(0.5 * a);
+            switch (axis) {
+                case 'x': return {TwValue(s), TwValue(0.0), TwValue(0.0), TwValue(c)};
+                case 'y': return {TwValue(0.0), TwValue(s), TwValue(0.0), TwValue(c)};
+                default:  return {TwValue(0.0), TwValue(0.0), TwValue(s), TwValue(c)};
+            }
+        };
+        auto qmul = [](const TwValue::Array &a, const TwValue::Array &b) -> TwValue::Array {
+            double ax=a[0].as_number(), ay=a[1].as_number(), az=a[2].as_number(), aw=a[3].as_number();
+            double bx=b[0].as_number(), by=b[1].as_number(), bz=b[2].as_number(), bw=b[3].as_number();
+            return {TwValue(aw*bx + ax*bw + ay*bz - az*by),
+                    TwValue(aw*by + ay*bw + az*bx - ax*bz),
+                    TwValue(aw*bz + az*bw + ax*by - ay*bx),
+                    TwValue(aw*bw - ax*bx - ay*by - az*bz)};
+        };
+        double angles[3] = {x, y, z};
+        std::unordered_map<char, double> byAxis = {{'x', x}, {'y', y}, {'z', z}};
+        TwValue::Array q0 = axis_quat(order[0], byAxis[order[0]]);
+        TwValue::Array q1 = axis_quat(order[1], byAxis[order[1]]);
+        TwValue::Array q2 = axis_quat(order[2], byAxis[order[2]]);
+        (void)angles;
+        return TwValue(qmul(qmul(q0, q1), q2));
+    }
+
     // math/select: {"type":"math/select","condition":expr,"a":if_true,"b":if_false}
     if (type == "select") {
         auto cit = expr.find("condition");
