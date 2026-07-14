@@ -171,6 +171,77 @@ Mixed with a call array in the same list:
 
 ---
 
+## Capabilities (`'R'`/`'C'`) and temporal duration (`'T'`)
+
+These two layer on top of any task kind above — a `TwCall`, `TwGoal`, or
+`TwMultiGoal` domain may add either or both. Unlike `goals`/`tasks`, **neither
+is structurally validated by `Loader.validate`**: they are plan-time concerns
+handled entirely by the NIF loader, not load-time checks. A malformed
+`capabilities` shape or an invalid ISO 8601 `duration` string is silently
+ignored or mishandled by the NIF, not rejected with a validator error — so
+there is no adversarial table for either, unlike every kind above.
+
+### Capabilities — ReBAC `HAS_CAPABILITY` guards (`'R'`/`'C'`)
+
+A top-level `capabilities` object binds which entities hold which
+capabilities, and which capabilities each action requires:
+
+```json
+"capabilities": {
+  "entities": {"<entity>": ["<cap>", ...], ...},
+  "actions":   {"<action>": ["<cap>", ...], ...}
+}
+```
+
+Each action alternative becomes a ReBAC `HAS_CAPABILITY` guard: the planner
+only applies that action to an agent (its first param) holding **every**
+capability the action requires. An agent lacking one can't take that path —
+the planner tries the next alternative, or reports no plan if none qualify.
+
+### Golden
+
+```json
+{"@type": "domain:Definition", "name": "capability_demo",
+ "variables": [{"name": "loc", "init": {"drone_1": "base"}}],
+ "capabilities": {"entities": {"drone_1": ["fly"]},
+                  "actions": {"a_fly": ["fly"], "a_walk": ["walk"]}},
+ "actions": {"a_fly": {"duration": "PT5M", "params": ["agent", "to"],
+                        "body": [{"pointer/set": "/loc/{agent}", "value": "{to}"}]},
+             "a_walk": {"duration": "PT30M", "params": ["agent", "to"],
+                        "body": [{"pointer/set": "/loc/{agent}", "value": "{to}"}]}},
+ "methods": {"move": {"params": ["agent", "to"],
+                      "alternatives": [{"name": "fly", "subtasks": [["a_fly", "{agent}", "{to}"]]},
+                                       {"name": "walk", "subtasks": [["a_walk", "{agent}", "{to}"]]}]}},
+ "tasks": [["move", "drone_1", "city"]]}
+```
+
+`drone_1` holds only `"fly"`, so the planner picks the `fly` alternative —
+`walk` is guarded out since `drone_1` lacks that capability. The bundled
+`entity_capabilities.jsonld` (`taskweft_plans`) is the full reference: three
+entity types (`fly`/`swim`/`walk`) plus an `amphibious_1` entity holding both
+`swim` and `walk`, so it can take either matching alternative.
+
+### Temporal duration — STN input (`'T'`)
+
+Any action may carry a `"duration": "<ISO 8601>"` field (e.g. `"PT5M"`,
+`"PT1H30M"`); actions without one default to `"PT0S"`. Every `plan` response
+already includes a `"temporal"` block — STN consistency plus each step's
+`start`/`end`/`duration` — computed from these fields, with no separate call
+needed:
+
+```json
+{"plan": [["a_fly", "drone_1", "city"]],
+ "temporal": {"consistent": true, "origin": "PT0S", "total": "PT5M",
+              "steps": [{"action": "a_fly", "duration": "PT5M", "start": "PT0S", "end": "PT5M"}]}}
+```
+
+The bundled `temporal_travel.jsonld` (`taskweft_plans`) is the duration-only
+reference domain — a travel-planning problem (walk vs. taxi) where every
+action carries a distinct duration and the STN checks schedule feasibility
+across a multi-step plan.
+
+---
+
 ## Soundness contract
 
 Every RECTGTN domain that validates and plans must satisfy the QA invariant used
@@ -197,3 +268,6 @@ against this contract in `test/taskweft/jsonld/loader_test.exs`, driving the
   against.
 - `deps/taskweft_nif/standalone/tw_domain.hpp` — `TwTask`, `TwGoal`,
   `TwMultiGoal` structs.
+- `deps/taskweft_plans/priv/plans/domains/entity_capabilities.jsonld` and
+  `temporal_travel.jsonld` — the full reference domains for capabilities and
+  temporal duration respectively.
