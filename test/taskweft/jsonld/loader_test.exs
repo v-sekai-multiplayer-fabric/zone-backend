@@ -131,8 +131,12 @@ defmodule Taskweft.JSONLD.LoaderTest do
     end
 
     test "accepts entities or actions being omitted" do
-      assert :ok = Loader.validate(base(%{"capabilities" => %{"entities" => %{"a" => ["x"]}}}), %{})
-      assert :ok = Loader.validate(base(%{"capabilities" => %{"actions" => %{"a" => ["x"]}}}), %{})
+      assert :ok =
+               Loader.validate(base(%{"capabilities" => %{"entities" => %{"a" => ["x"]}}}), %{})
+
+      assert :ok =
+               Loader.validate(base(%{"capabilities" => %{"actions" => %{"a" => ["x"]}}}), %{})
+
       assert :ok = Loader.validate(base(%{"capabilities" => %{}}), %{})
     end
 
@@ -185,7 +189,11 @@ defmodule Taskweft.JSONLD.LoaderTest do
     end
 
     test "rejects a malformed ISO 8601 duration string" do
-      doc = base(%{"actions" => %{"a_fly" => %{"duration" => "5 minutes", "params" => [], "body" => []}}})
+      doc =
+        base(%{
+          "actions" => %{"a_fly" => %{"duration" => "5 minutes", "params" => [], "body" => []}}
+        })
+
       assert {:error, msg} = Loader.validate(doc, %{})
       assert msg =~ "action a_fly: invalid duration"
     end
