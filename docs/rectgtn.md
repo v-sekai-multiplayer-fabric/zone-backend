@@ -264,6 +264,12 @@ against this contract in `test/taskweft/jsonld/loader_test.exs`, driving the
 
 - [ADR 0001](adr/0001-gltf-interactivity-node-shape.md) — the action-body node
   shape (`eval` + `pointer/set`) the `TwCall` bodies above use.
+- [ADR 0002](adr/0002-khr-interactivity-tier1-node-conventions.md) — node
+  catalog conventions (decompose-first, structural nodes, multi-output
+  `b`-selector) as the full KHR_interactivity Tier 1 catalog is implemented.
+- [ADR 0003](adr/0003-khr-interactivity-tier2-execution-strategy.md) — the
+  planned flow-graph execution engine (embedded `libriscv`) for Tier 2
+  (`flow/*`, `event/*`, `animation/*`).
 - `lib/taskweft/jsonld/loader.ex` — the validator these shapes are checked
   against.
 - `deps/taskweft_nif/standalone/tw_domain.hpp` — `TwTask`, `TwGoal`,
