@@ -6,6 +6,11 @@
 HTN planner server. Exposes the `plan` and `replan` tools, and every bundled
 `priv/plans/{domains,problems}/*.jsonld` as a resource.
 
+The planner model is **RECTGTN** (Relationship-Enabled Capability-Temporal
+Goal-Task-Network). See [docs/rectgtn.md](docs/rectgtn.md) for the acronym, the
+three task kinds (`TwCall`, `TwGoal`, `TwMultiGoal`), and their golden/rejected
+JSON-LD shapes.
+
 Download the binary from the
 [latest release](https://github.com/V-Sekai-fire/multiplayer-fabric-taskweft/releases).
 
