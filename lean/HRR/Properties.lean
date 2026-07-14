@@ -82,8 +82,8 @@ theorem unbind_self (a : PhaseVec d) :
 theorem diff_eq_iff_zero (a b : PhaseVec d) :
     (∀ i, diff a b i = 0) ↔ a = b := by
   constructor
-  · intro h; funext i; have := h i; simp [diff, zero] at this; omega
-  · intro h; subst h; intro i; simp [diff, zero]
+  · intro h; funext i; have := h i; simp [diff] at this; omega
+  · intro h; subst h; intro i; simp [diff]
 
 /-- The difference of a vector with itself is zero at every component.
     In the real implementation: cos(a_i - a_i) = cos(0) = 1,
