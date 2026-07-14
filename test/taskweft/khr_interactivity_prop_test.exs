@@ -107,6 +107,20 @@ defmodule Taskweft.KHRInteractivityPropTest do
     refute_plans(eval_domain(khr("math/isInf", %{"a" => 1.0})))
   end
 
+  test "math/Tau > 6.28318" do
+    assert_plans(eval_domain(khr("math/gt", %{"a" => khr("math/Tau"), "b" => 6.28318})))
+  end
+
+  test "math/Tau < 6.28319" do
+    assert_plans(eval_domain(khr("math/lt", %{"a" => khr("math/Tau"), "b" => 6.28319})))
+  end
+
+  test "math/Tau = 2 * math/Pi" do
+    assert_plans(
+      eval_domain(near_eq(khr("math/Tau"), khr("math/mul", %{"a" => 2.0, "b" => khr("math/Pi")})))
+    )
+  end
+
   # ---------------------------------------------------------------------------
   # §02 Arithmetic: add, sub, mul, div, rem, fract, neg, abs, min, max
   # ---------------------------------------------------------------------------
@@ -477,6 +491,141 @@ defmodule Taskweft.KHRInteractivityPropTest do
 
   test "math/random: result is >= 0.0" do
     assert_plans(eval_domain(khr("math/ge", %{"a" => khr("math/random"), "b" => 0.0})))
+  end
+
+  # ---------------------------------------------------------------------------
+  # §02 Smooth Step — defined via math/min + math/saturate (spec note).
+  # Golden values cross-checked against lean/KHRTier1Witness.lean's reference
+  # model (witness-certified range + boundary invariants before this was
+  # implemented in C++).
+  # ---------------------------------------------------------------------------
+
+  test "math/smoothStep: smoothStep(0,1,0) = 0.0 (lower edge)" do
+    assert_plans(
+      eval_domain(
+        khr("math/eq", %{
+          "a" => khr("math/smoothStep", %{"a" => 0.0, "b" => 1.0, "c" => 0.0}),
+          "b" => 0.0
+        })
+      )
+    )
+  end
+
+  test "math/smoothStep: smoothStep(0,1,1) = 1.0 (upper edge)" do
+    assert_plans(
+      eval_domain(
+        khr("math/eq", %{
+          "a" => khr("math/smoothStep", %{"a" => 0.0, "b" => 1.0, "c" => 1.0}),
+          "b" => 1.0
+        })
+      )
+    )
+  end
+
+  test "math/smoothStep: smoothStep(0,1,0.5) = 0.5 (symmetric midpoint)" do
+    assert_plans(
+      eval_domain(
+        khr("math/eq", %{
+          "a" => khr("math/smoothStep", %{"a" => 0.0, "b" => 1.0, "c" => 0.5}),
+          "b" => 0.5
+        })
+      )
+    )
+  end
+
+  test "math/smoothStep: handles a > b (spec note)" do
+    assert_plans(
+      eval_domain(
+        near_eq(
+          khr("math/smoothStep", %{"a" => 2.0, "b" => -2.0, "c" => 0.0}),
+          0.5
+        )
+      )
+    )
+  end
+
+  test "math/smoothStep: result stays within [0,1]" do
+    assert_plans(
+      eval_domain(
+        khr("math/and", %{
+          "a" =>
+            khr("math/ge", %{
+              "a" => khr("math/smoothStep", %{"a" => -2.0, "b" => 2.0, "c" => 10.0}),
+              "b" => 0.0
+            }),
+          "b" =>
+            khr("math/le", %{
+              "a" => khr("math/smoothStep", %{"a" => -2.0, "b" => 2.0, "c" => 10.0}),
+              "b" => 1.0
+            })
+        })
+      )
+    )
+  end
+
+  # ---------------------------------------------------------------------------
+  # §02 Matrix swizzle: combine2x2 / extract2x2 / extract3x3 / extract4x4
+  # ---------------------------------------------------------------------------
+
+  test "math/combine2x2 then extract2x2 roundtrip" do
+    assert_plans(
+      eval_domain(
+        khr("math/eq", %{
+          "a" =>
+            khr("math/extract2x2", %{
+              "a" => khr("math/combine2x2", %{"a" => 1.0, "b" => 2.0, "c" => 3.0, "d" => 4.0}),
+              "b" => 2
+            }),
+          "b" => 3.0
+        })
+      )
+    )
+  end
+
+  test "math/extract3x3 and math/extract4x4 index the same flat array identically" do
+    m = khr("math/combine2x2", %{"a" => 1.0, "b" => 2.0, "c" => 3.0, "d" => 4.0})
+
+    assert_plans(
+      eval_domain(
+        khr("math/eq", %{
+          "a" => khr("math/extract3x3", %{"a" => m, "b" => 2}),
+          "b" => khr("math/extract4x4", %{"a" => m, "b" => 2})
+        })
+      )
+    )
+  end
+
+  # ---------------------------------------------------------------------------
+  # §02 Rotate 2D — cross-checked against lean/KHRTier1Witness.lean's
+  # length-preservation witness certification.
+  # ---------------------------------------------------------------------------
+
+  test "math/rotate2D: rotating (1,0) by Pi/2 gives (0,1)" do
+    v = khr("math/combine2", %{"a" => 1.0, "b" => 0.0})
+
+    result =
+      khr("math/rotate2D", %{
+        "a" => v,
+        "b" => khr("math/div", %{"a" => khr("math/Pi"), "b" => 2.0})
+      })
+
+    assert_plans(
+      eval_domain(
+        khr("math/and", %{
+          "a" => near_eq(khr("math/extract2", %{"a" => result, "b" => 0}), 0.0),
+          "b" => near_eq(khr("math/extract2", %{"a" => result, "b" => 1}), 1.0)
+        })
+      )
+    )
+  end
+
+  test "math/rotate2D preserves vector length" do
+    v = khr("math/combine2", %{"a" => 3.0, "b" => 4.0})
+    result = khr("math/rotate2D", %{"a" => v, "b" => 0.7})
+
+    assert_plans(
+      eval_domain(near_eq(khr("math/length", %{"a" => result}), khr("math/length", %{"a" => v})))
+    )
   end
 
   # ---------------------------------------------------------------------------

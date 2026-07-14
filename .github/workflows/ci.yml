@@ -33,12 +33,18 @@ jobs:
       # git dep whose app version is unchanged even when its locked sha moves,
       # so a cached _build silently runs a stale NIF against new domains. The
       # C++20 NIF build is quick, so compiling fresh each run keeps it correct.
+      #
+      # No restore-keys: a prefix-match fallback can restore a deps/ tree from
+      # an older mix.lock whose git deps (e.g. taskweft_nif) are pinned to a
+      # different commit than the current lock — `mix deps.get` does not
+      # reliably detect and fix that mismatch on its own, so a stale NIF
+      # silently gets compiled and tested. Only ever restore on an exact
+      # mix.lock hash match; anything else gets a correct, fresh checkout.
       - name: Cache Mix deps
         uses: actions/cache@v6
         with:
           path: deps
           key: ${{ runner.os }}-taskweft-deps-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-taskweft-deps-
 
       - name: Install dependencies
         run: mix deps.get

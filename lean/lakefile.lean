@@ -31,3 +31,10 @@ require «plausible-witness-dag» from git
 @[default_target]
 lean_exe «mcp_auth_witness» where
   root := `MCPAuthWitness
+
+-- KHR_interactivity Tier 1 decomposition witnesses: written before the C++
+-- (deps/taskweft_nif/standalone/tw_loader.hpp) as the reference model, then
+-- cross-checked against it via test/taskweft/khr_interactivity_prop_test.exs.
+@[default_target]
+lean_exe «khr_tier1_witness» where
+  root := `KHRTier1Witness

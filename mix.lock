@@ -49,7 +49,7 @@
   "statistex": {:hex, :statistex, "1.1.0", "7fec1eb2f580a0d2c1a05ed27396a084ab064a40cfc84246dbfb0c72a5c761e5", [:mix], [], "hexpm", "f5950ea26ad43246ba2cce54324ac394a4e7408fdcf98b8e230f503a0cba9cf5"},
   "taskweft_mcp": {:git, "https://github.com/taskweft/mcp.git", "5845a474df5f6b6363e526b3ebb7cc30def61e7c", []},
   "taskweft_mcp_client": {:git, "https://github.com/taskweft/mcp-client.git", "9c086cdab5ce146ebd2174bc24ab5b54d93f110a", []},
-  "taskweft_nif": {:git, "https://github.com/taskweft/nif.git", "0a2a90debc1c93c91eccc6c1a6c4a16b9e77b4cb", []},
+  "taskweft_nif": {:git, "https://github.com/taskweft/nif.git", "eca2cf02dca6ad6975cbeefc91ae5d45eba58846", []},
   "taskweft_plans": {:git, "https://github.com/taskweft/plans.git", "65e3ed7d944271d45afcab595f08513339c8fdaf", []},
   "taskweft_rebac": {:git, "https://github.com/taskweft/rebac.git", "d650077b7fe9f3233ae26cec53c1a1ad94e4d2c7", []},
   "telemetry": {:hex, :telemetry, "1.4.2", "a0cb522801dffb1c49fe6e30561badffc7b6d0e180db1300df759faa22062855", [:rebar3], [], "hexpm", "928f6495066506077862c0d1646609eed891a4326bee3126ba54b60af61febb1"},
