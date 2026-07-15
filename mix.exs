@@ -1,7 +1,7 @@
 defmodule Taskweft.NIF.MixProject do
   use Mix.Project
 
-  @version "0.2.0-dev.2"
+  @version "0.2.0-dev.4"
 
   def project do
     [
