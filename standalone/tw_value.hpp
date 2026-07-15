@@ -4,7 +4,9 @@
 // key iteration order matches Python dict insertion order exactly.
 #pragma once
 #include "thirdparty/tsl_ordered_map.h"
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -130,5 +132,59 @@ public:
             }
         }
         return "nil";
+    }
+
+    // Deterministic structural hash used by planner memoization keys.
+    // Dict keys are sorted so equal values hash identically regardless of
+    // insertion order. Arrays keep order as semantic data.
+    uint64_t stable_hash() const {
+        auto mix = [](uint64_t h, uint64_t v) {
+            h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+            return h;
+        };
+
+        uint64_t h = 1469598103934665603ull;
+        h = mix(h, static_cast<uint64_t>(_type));
+
+        switch (_type) {
+            case Type::NIL:
+                return h;
+            case Type::BOOL:
+                return mix(h, _b ? 1ull : 0ull);
+            case Type::INT:
+                return mix(h, static_cast<uint64_t>(_i));
+            case Type::FLOAT: {
+                double v = _f;
+                if (v == 0.0) v = 0.0; // normalize -0.0
+                uint64_t bits;
+                if (std::isnan(v)) {
+                    bits = 0x7ff8000000000000ull;
+                } else {
+                    std::memcpy(&bits, &v, sizeof(bits));
+                }
+                return mix(h, bits);
+            }
+            case Type::STRING:
+                return mix(h, std::hash<std::string>{}(_s));
+            case Type::ARRAY: {
+                uint64_t out = mix(h, static_cast<uint64_t>(_arr->size()));
+                for (const TwValue &v : *_arr) out = mix(out, v.stable_hash());
+                return out;
+            }
+            case Type::DICT: {
+                std::vector<std::string> keys;
+                keys.reserve(_dct->size());
+                for (const auto &kv : *_dct) keys.push_back(kv.first);
+                std::sort(keys.begin(), keys.end());
+                uint64_t out = mix(h, static_cast<uint64_t>(keys.size()));
+                for (const std::string &k : keys) {
+                    out = mix(out, std::hash<std::string>{}(k));
+                    auto it = _dct->find(k);
+                    out = mix(out, it->second.stable_hash());
+                }
+                return out;
+            }
+        }
+        return h;
     }
 };

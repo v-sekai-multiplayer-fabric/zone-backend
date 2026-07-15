@@ -13,6 +13,14 @@
 #include <functional>
 #include <limits>
 #include <memory>
+
+// M_PI and M_E are not defined on Windows with MSVC/clang without _USE_MATH_DEFINES.
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_E
+#define M_E  2.71828182845904523536
+#endif
 #include <optional>
 #include <random>
 #include <sstream>

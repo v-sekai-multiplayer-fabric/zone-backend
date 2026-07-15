@@ -5,8 +5,11 @@
 #include "tw_rebac.hpp"
 #include "tw_value.hpp"
 #include "thirdparty/tsl_ordered_map.h"
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 struct TwState {
     tsl::ordered_map<std::string, TwValue> vars;
@@ -14,7 +17,14 @@ struct TwState {
     TwReBAC::TwReBACGraph rebac_graph;
     int rebac_fuel = 8;
 
-    void set_var(const std::string &key, TwValue val) { vars[key] = std::move(val); }
+    // Memoized canonical signature hash. Invalidated on any state mutation.
+    mutable bool     sig_hash_valid = false;
+    mutable uint64_t sig_hash_cache = 0;
+
+    void set_var(const std::string &key, TwValue val) {
+        vars[key] = std::move(val);
+        sig_hash_valid = false;
+    }
 
     TwValue get_var(const std::string &key) const {
         auto it = vars.find(key);
@@ -30,6 +40,7 @@ struct TwState {
             dict = vars.at(var).as_dict();
         dict[key.to_string()] = std::move(val);
         vars[var] = TwValue(std::move(dict));
+        sig_hash_valid = false;
     }
 
     TwValue get_nested(const std::string &var, const TwValue &key) const {
@@ -64,5 +75,37 @@ struct TwState {
             s += k; s += '='; s += vars.at(k).to_string(); s += ';';
         }
         return s;
+    }
+
+    // Fast deterministic hash for planner memoization keys.
+    // Canonicalizes by sorted top-level variable name so equivalent states
+    // reached through different insertion orders still collide intentionally.
+    uint64_t signature_hash() const {
+        if (sig_hash_valid) return sig_hash_cache;
+
+        uint64_t h = 1469598103934665603ull; // FNV-1a offset basis
+        auto mix_str = [&h](const std::string &s) {
+            for (unsigned char c : s) {
+                h ^= static_cast<uint64_t>(c);
+                h *= 1099511628211ull;
+            }
+            h ^= 0x9e3779b97f4a7c15ull;
+            h *= 1099511628211ull;
+        };
+
+        std::vector<std::string> keys;
+        keys.reserve(vars.size());
+        for (const auto &[k, _] : vars) keys.push_back(k);
+        std::sort(keys.begin(), keys.end());
+
+        for (const std::string &k : keys) {
+            mix_str(k);
+            auto it = vars.find(k);
+            h ^= it->second.stable_hash();
+            h *= 1099511628211ull;
+        }
+        sig_hash_cache = h;
+        sig_hash_valid = true;
+        return sig_hash_cache;
     }
 };

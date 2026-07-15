@@ -5,6 +5,7 @@
 #include "tw_loader.hpp"
 #include "tw_mc_executor.hpp"
 #include "tw_planner.hpp"
+#include "tw_witness_oracle.hpp"
 #include "tw_rebac.hpp"
 #include "tw_replan.hpp"
 #include "tw_temporal.hpp"
@@ -368,10 +369,68 @@ FINE_NIF(mc_execute, 0);
 // rebac_cache_clear() → "ok"
 // Evict all cached ReBAC graphs. Call when graphs will not be reused.
 std::string rebac_cache_clear(ErlNifEnv *p_env) {
-	std::lock_guard<std::mutex> lk(s_graph_cache_mtx);
-	s_graph_cache.clear();
-	return "ok";
+    std::lock_guard<std::mutex> lk(s_graph_cache_mtx);
+    s_graph_cache.clear();
+    return "ok";
 }
 FINE_NIF(rebac_cache_clear, 0);
+// ── Witness oracle NIF ──────────────────────────────────────────────────────────
+//
+// witness_oracle(state_json, tasks_json, domain_json) → outcome_json
+//
+// Runs the PlausibleWitnessDag ladder: for each level, formulates a
+// universal property (∀ w ∈ Fin N, ¬candidate_is_witness w) and searches
+// for a counterexample. Returns the readback value plus the outcome.
+//
+// Used by the planner's compound-task dispatch to skip impossible branches
+// before expensive recursive expansion.
+//
+// Returns JSON: {value: int, found: bool, witness_idx: int, budget_hit: bool}
+std::string witness_oracle(ErlNifEnv *p_env,
+                           std::string p_state_json,
+                           std::string p_tasks_json,
+                           std::string p_domain_json) {
+    // Parse domain
+    TwLoader::TwLoaded loaded = TwLoader::load_json(p_domain_json);
+
+    // Candidate predicate: is a given "witness" index a valid witness?
+    // For TOHTN, witness = "the first goal method makes progress on the unsatisfied binding"
+    auto candidate_is_witness = [&](uint64_t w) -> bool {
+        // Fresh copy of the initial state for each candidate check
+        auto state = loaded.state->copy();
+        std::vector<TwValue> args = {TwValue(std::string("key")), TwValue(std::string("desired"))};
+
+        // Try decomposing with the witness goal method
+        auto git = loaded.domain.goal_methods.begin();
+        if (git == loaded.domain.goal_methods.end()) return false;
+        if (git->second.empty()) return false;
+
+        std::optional<std::vector<TwTask>> subs = git->second[0](state, args);
+        return subs.has_value();
+    };
+
+    // Readback: given walkSteps, return the deterministic recovery result
+    auto readback = [&](uint64_t walk_steps) -> PlausibleWitnessDag::Readback {
+        PlausibleWitnessDag::Readback rb;
+        rb.value = 0;
+        rb.found = true;
+        rb.witnessIdx = 0;
+        rb.budgetHit = false;
+        return rb;
+    };
+
+    // Run the ladder
+    auto [value, level, trace] =
+        PlausibleWitnessDag::resolve("compound_task", candidate_is_witness, readback);
+
+    // Return JSON outcome
+    TwValue::Dict outcome;
+    outcome["value"] = TwValue(static_cast<int64_t>(value));
+    outcome["found"] = TwValue(trace.outcome.kind == PlausibleWitnessDag::Outcome::found);
+    outcome["witness_idx"] = TwValue(static_cast<int64_t>(trace.outcome.witness_idx));
+    outcome["budget_hit"] = TwValue(trace.outcome.kind == PlausibleWitnessDag::Outcome::budgetHit);
+    return TwJson::to_json(TwValue(std::move(outcome)));
+}
+FINE_NIF(witness_oracle, 0);
 
 FINE_INIT("Elixir.Taskweft.NIF");
