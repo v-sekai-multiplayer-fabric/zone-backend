@@ -136,3 +136,4 @@ env["completed_steps"] == length(Jason.decode!(plan_json))
 - [ADR 0001](https://github.com/taskweft/taskweft/blob/main/docs/adr/0001-gltf-interactivity-node-shape.md) — the action-body node shape (`eval` + `pointer/set`).
 - [ADR 0002](https://github.com/taskweft/taskweft/blob/main/docs/adr/0002-khr-interactivity-tier1-node-conventions.md) — the glTF Interactivity node catalog conventions.
 - [ADR 0003](https://github.com/taskweft/taskweft/blob/main/docs/adr/0003-khr-interactivity-tier2-execution-strategy.md) — the planned flow-graph execution engine.
+- [ADR 0004](https://github.com/taskweft/taskweft/blob/main/docs/adr/0004-unify-domain-capabilities-with-rebac-graph.md) — the planned unification of domain capabilities with the ReBAC relation-expression engine (issue #96).
