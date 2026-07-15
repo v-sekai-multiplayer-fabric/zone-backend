@@ -14,7 +14,8 @@ defmodule Taskweft.MixProject do
       dialyzer: [plt_add_apps: [:mix], ignore_warnings: ".dialyzer_ignore.exs"],
       description: "HTN planner exposing plan/replan over the RECTGTN model via MCP",
       package: package(),
-      source_url: "https://github.com/taskweft/taskweft"
+      source_url: "https://github.com/taskweft/taskweft",
+      docs: docs()
     ]
   end
 
@@ -22,6 +23,16 @@ defmodule Taskweft.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/taskweft/taskweft"}
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: [
+        "README.md",
+        "docs/rectgtn.md"
+      ]
     ]
   end
 

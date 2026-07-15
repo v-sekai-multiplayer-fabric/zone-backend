@@ -74,7 +74,7 @@ is its arguments: `[name, arg1, arg2, …]`. If `name` is in `actions` it is a
 
 Effects use `pointer/set`; guards use `{"eval": {"type": "math/<op>", …}}`. The
 legacy `set` / `check` shorthand is **rejected** — see
-[ADR 0001](adr/0001-gltf-interactivity-node-shape.md).
+[ADR 0001](https://github.com/taskweft/taskweft/blob/main/docs/adr/0001-gltf-interactivity-node-shape.md).
 
 ### Adversarial
 
@@ -262,12 +262,12 @@ against this contract in `test/taskweft/jsonld/loader_test.exs`, driving the
 
 ## See also
 
-- [ADR 0001](adr/0001-gltf-interactivity-node-shape.md) — the action-body node
+- [ADR 0001](https://github.com/taskweft/taskweft/blob/main/docs/adr/0001-gltf-interactivity-node-shape.md) — the action-body node
   shape (`eval` + `pointer/set`) the `TwCall` bodies above use.
-- [ADR 0002](adr/0002-khr-interactivity-tier1-node-conventions.md) — node
+- [ADR 0002](https://github.com/taskweft/taskweft/blob/main/docs/adr/0002-khr-interactivity-tier1-node-conventions.md) — node
   catalog conventions (decompose-first, structural nodes, multi-output
   `b`-selector) as the full KHR_interactivity Tier 1 catalog is implemented.
-- [ADR 0003](adr/0003-khr-interactivity-tier2-execution-strategy.md) — the
+- [ADR 0003](https://github.com/taskweft/taskweft/blob/main/docs/adr/0003-khr-interactivity-tier2-execution-strategy.md) — the
   planned flow-graph execution engine (embedded `libriscv`) for Tier 2
   (`flow/*`, `event/*`, `animation/*`).
 - `lib/taskweft/jsonld/loader.ex` — the validator these shapes are checked
