@@ -35,7 +35,8 @@ defmodule Taskweft.NIF.MixProject do
       {:jason, "~> 1.4"},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:propcheck, "~> 1.4", only: [:test, :dev], runtime: false},
-      {:benchee, "~> 1.3", only: :dev, runtime: false}
+      {:benchee, "~> 1.3", only: :dev, runtime: false},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 
