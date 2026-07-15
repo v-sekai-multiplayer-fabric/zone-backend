@@ -31,25 +31,33 @@ defmodule TaskweftDeploy.Router do
   plug(:mcp_guard)
   plug(:dispatch)
 
+  # taskweft's own resolved version, not a separately hand-bumped constant —
+  # a hardcoded duplicate went stale the first time taskweft was bumped
+  # without a matching edit here. Safe to read at compile time: taskweft is
+  # a path dep in this monorepo, so its .app spec is already loaded by the
+  # time this module compiles.
+  @taskweft_version Application.spec(:taskweft, :vsn) |> to_string()
+
+  # Baked into the image at build time (Containerfile ARG GIT_SHA), not read
+  # from a runtime env var — so it can never drift from what was actually
+  # compiled into this image.
+  @git_sha System.get_env("GIT_SHA", "unknown")
+
   @mcp_init [
     handler: Taskweft.MCP.Server,
-    server_info: %{name: "taskweft", version: "0.1.0"},
+    server_info: %{name: "taskweft", version: @taskweft_version},
     tools: [],
     sse_enabled: true,
     cors_enabled: true,
     validate_origin: false
   ]
 
-  # Version follows the dev/beta/rc/release ladder (v<major>.<minor>.<patch>-<stage>.<N>);
-  # bump alongside the git tag created after each deploy.
-  @release_version "0.1.1"
-
   get "/" do
     LandingPlug.call(conn, [])
   end
 
   get "/health" do
-    send_json(conn, 200, %{"status" => "ok", "version" => @release_version})
+    send_json(conn, 200, %{"status" => "ok", "version" => @taskweft_version, "git_sha" => @git_sha})
   end
 
   get "/.well-known/oauth-protected-resource" do

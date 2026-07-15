@@ -40,6 +40,12 @@ COPY deploy/mix.exs deploy/mix.lock* ./
 RUN mix deps.get --only prod
 RUN mix deps.compile
 
+# Baked in at compile time (not read from a runtime env var) so /health's
+# git_sha can never drift from what was actually compiled into this image —
+# no separate "did I remember to pass this to the container too" step.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 COPY deploy/config config
 COPY deploy/lib lib
 RUN mix compile
