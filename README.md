@@ -7,7 +7,7 @@ HTN planner server. Exposes the `plan` and `replan` tools, and every bundled
 `priv/plans/{domains,problems}/*.jsonld` as a resource.
 
 The planner model is **RECTGTN** (Relationship-Enabled Capability-Temporal
-Goal-Task-Network). See [docs/rectgtn.md](docs/rectgtn.md) for the acronym, the
+Goal-Task-Network). See [docs/rectgtn.md](https://github.com/taskweft/taskweft/blob/main/docs/rectgtn.md) for the acronym, the
 three task kinds (`TwCall`, `TwGoal`, `TwMultiGoal`), and their golden/rejected
 JSON-LD shapes.
 
