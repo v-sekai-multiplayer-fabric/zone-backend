@@ -2,6 +2,10 @@
 /_build/
 /deps/
 /priv/libtaskweft_nif.so
+/priv/libtaskweft_nif.dll
+/priv/libtaskweft_nif.dylib
+priv/*.dll
+priv/*.dylib
 *.beam
 
 # CLI build directories
