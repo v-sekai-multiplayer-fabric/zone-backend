@@ -24,7 +24,8 @@ defmodule Taskweft.ReBAC.MixProject do
     [
       {:taskweft_nif, "~> 0.2.0-dev"},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
-      {:propcheck, "~> 1.4", only: [:test, :dev], runtime: false}
+      {:propcheck, "~> 1.4", only: [:test, :dev], runtime: false},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 
