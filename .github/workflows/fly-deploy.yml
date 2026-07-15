@@ -1,0 +1,32 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # Scoped so unrelated changes elsewhere in the monorepo (docs, Lean
+    # proofs, CLI, CI-only tweaks) don't trigger a Fly redeploy — only
+    # taskweft's own source (the deploy path dep) or deploy/ itself.
+    paths:
+      - "lib/**"
+      - "mix.exs"
+      - "mix.lock"
+      - "deploy/**"
+      - "fly.toml"
+  workflow_dispatch:
+
+# One deploy at a time.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: fly deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

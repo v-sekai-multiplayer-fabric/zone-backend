@@ -1,0 +1,13 @@
+_build/
+deps/
+*.ez
+erl_crash.dump
+.git/
+.github/
+.elixir_ls/
+deploy/deploy/
+deploy/README.md
+lean/
+cli/
+priv/
+burrito_out/

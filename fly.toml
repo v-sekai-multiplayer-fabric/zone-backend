@@ -1,0 +1,40 @@
+# Fly.io config for the hosted taskweft MCP server.
+# TLS is terminated at Fly's edge (force_https); the app serves plain HTTP on 8080.
+# Scale-to-zero keeps idle cost near $0 (a 256mb shared-cpu-1x is ~$2/mo always-on).
+#
+# Lives at the monorepo root (not deploy/) so the build context includes both
+# taskweft's own source and deploy/'s — taskweft_deploy depends on taskweft
+# via a path dep, so both need to be present at their real relative layout.
+
+app = "taskweft-mcp"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "deploy/Containerfile"
+
+[env]
+  PORT = "8080"
+  # Stable issuer / OAuth metadata base (TLS terminates at Fly's edge).
+  PUBLIC_BASE_URL = "https://taskweft-mcp.fly.dev"
+  # Non-secret whitelist. Bare = GitHub login; @name / org:name = org membership.
+  # Org membership is checked via GET /user/orgs with only read:user scope, so
+  # it only sees *public* org membership (no read:org requested — see oauth.ex).
+  TASKWEFT_MCP_GH_ALLOW = "fire,@taskweft,@V-Sekai-fire,@V-Sekai"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
