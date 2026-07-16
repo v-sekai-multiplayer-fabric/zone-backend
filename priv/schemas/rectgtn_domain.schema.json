@@ -125,11 +125,7 @@
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "description": "Rejects only the legacy {\"pointer\": \"/x\", \"<op>\": v} check-clause shape (taskweft-nif #50 phase 3) — has \"pointer\" but not \"eval\".",
-                  "not": {
-                    "required": ["pointer"],
-                    "not": { "required": ["eval"] }
-                  }
+                  "required": ["eval"]
                 }
               },
               "subtasks": {
