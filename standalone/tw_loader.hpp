@@ -1171,7 +1171,6 @@ inline TwLoaded load_domain(const TwValue &data) {
     static const std::unordered_set<std::string> kKnownKeys = {
         "@context", "@type", "name", "description", "version", "source",
         "enums", "variables", "actions", "methods", "todo_list",
-        "capabilities",
     };
     for (const std::pair<const std::string, TwValue> &kv : d) {
         if (!kKnownKeys.count(kv.first)) {
@@ -1186,7 +1185,14 @@ inline TwLoaded load_domain(const TwValue &data) {
         result.enums = it->second.as_dict();
     const auto &enums = result.enums;
 
-    // Variables
+    // Variables. A variable literally named "capabilities" is ordinary state
+    // like any other — it's pointer-addressable the same way — but is also
+    // read below to build the domain's ReBAC graph, the one piece of load-
+    // time compilation a plain state variable can't do for itself: entity/
+    // relationship edges want a real graph structure (adjacency + expand
+    // index) for TwReBAC::check_expr's relation-expression algebra
+    // (union/intersection/tuple_to_userset chains), not a pointer walk.
+    TwValue capabilities_init;
     if (auto it = d.find("variables"); it != d.end() && it->second.is_array()) {
         for (auto &var_def : it->second.as_array()) {
             if (!var_def.is_dict()) continue;
@@ -1199,95 +1205,69 @@ inline TwLoaded load_domain(const TwValue &data) {
             if (init.is_dict()) {
                 for (auto &[key, val] : init.as_dict())
                     result.state->set_nested(var_name, TwValue(key), val);
+                if (var_name == "capabilities") capabilities_init = init;
             } else {
                 result.state->set_var(var_name, init);
             }
         }
     }
 
-    // Capabilities/Relationships (ADR 0004): a domain's "entities" capability
-    // lists compile into HAS_CAPABILITY edges on a TwReBAC::TwReBACGraph (the
-    // same graph engine Taskweft.ReBAC uses standalone), plus an optional
-    // explicit "graph" key (identical wire format to Taskweft.ReBAC's
-    // graph_json: {"edges":[...],"definitions":{}}) for richer relationships
-    // (team membership, delegation, ...). _cap_<cap> state vars are still
-    // populated for introspection/backward compatibility, but action guards
-    // are evaluated against the graph via TwReBAC::check_expr, not read back
-    // from those vars — so a domain can express a capability requirement as
-    // an arbitrary relation expression (union/intersection/tuple_to_userset),
-    // not just a direct HAS_CAPABILITY edge.
+    // Relationships (ADR 0004): the "capabilities" variable's "entities" list
+    // compiles into HAS_CAPABILITY edges on a TwReBAC::TwReBACGraph (the same
+    // graph engine Taskweft.ReBAC uses standalone), plus an optional explicit
+    // "graph" key (identical wire format to Taskweft.ReBAC's graph_json:
+    // {"edges":[...],"definitions":{}}) for richer relationships (team
+    // membership, delegation, ...). _cap_<cap> state vars are still populated
+    // for introspection/backward compatibility, but action guards are
+    // evaluated against the graph via TwReBAC::check_expr, not read back from
+    // those vars — so a domain can express a capability requirement as an
+    // arbitrary relation expression, not just a direct HAS_CAPABILITY edge.
     //
-    // "actions": {action: [requirement, ...]} — each requirement is either a
-    // bare capability-name string (sugar for a direct HAS_CAPABILITY check),
-    // or {"rel": <relation-expression>, "object": <string>} for the general
-    // case. Every requirement in the list must hold (AND), same as before.
+    // There is no compiled sugar for action requirements anymore: a domain
+    // author writes the {"eval": {"type": "rebac/check", ...}} guard step
+    // directly into the action's own body, the same mechanism every other
+    // action precondition already uses (build_action's "eval" step handling,
+    // below — "action fails if the result is false").
     auto rebac_graph = std::make_shared<TwReBAC::TwReBACGraph>();
-    std::unordered_map<std::string, std::vector<std::pair<TwValue, std::string>>> action_required;
-    {
-        TwValue::Dict::const_iterator cap_it = d.find("capabilities");
-        if (cap_it != d.end() && cap_it->second.is_dict()) {
-            const TwValue::Dict &caps = cap_it->second.as_dict();
+    if (capabilities_init.is_dict()) {
+        const TwValue::Dict &caps = capabilities_init.as_dict();
 
-            // entities: {entity: [cap, ...]} → HAS_CAPABILITY edge + _cap_<cap>[entity] (compat)
-            TwValue::Dict::const_iterator ent_it = caps.find("entities");
-            if (ent_it != caps.end() && ent_it->second.is_dict()) {
-                for (const std::pair<const std::string, TwValue> &ep : ent_it->second.as_dict()) {
-                    if (!ep.second.is_array()) continue;
-                    for (const TwValue &cv : ep.second.as_array()) {
-                        const std::string &cap = cv.as_string();
-                        rebac_graph->add_edge(ep.first, cap, "HAS_CAPABILITY");
-                        std::string cap_var = "_cap_" + cap;
-                        result.state->set_nested(cap_var, TwValue(ep.first), TwValue(true));
-                    }
+        // entities: {entity: [cap, ...]} → HAS_CAPABILITY edge + _cap_<cap>[entity] (compat)
+        TwValue::Dict::const_iterator ent_it = caps.find("entities");
+        if (ent_it != caps.end() && ent_it->second.is_dict()) {
+            for (const std::pair<const std::string, TwValue> &ep : ent_it->second.as_dict()) {
+                if (!ep.second.is_array()) continue;
+                for (const TwValue &cv : ep.second.as_array()) {
+                    const std::string &cap = cv.as_string();
+                    rebac_graph->add_edge(ep.first, cap, "HAS_CAPABILITY");
+                    std::string cap_var = "_cap_" + cap;
+                    result.state->set_nested(cap_var, TwValue(ep.first), TwValue(true));
                 }
             }
+        }
 
-            // Optional explicit relationship graph, merged into the same graph
-            // the "entities" capability edges above already populated.
-            TwValue::Dict::const_iterator graph_it = caps.find("graph");
-            if (graph_it != caps.end() && graph_it->second.is_dict()) {
-                const TwValue::Dict &gm = graph_it->second.as_dict();
-                TwValue::Dict::const_iterator ge_it = gm.find("edges");
-                if (ge_it != gm.end() && ge_it->second.is_array()) {
-                    for (const TwValue &ev : ge_it->second.as_array()) {
-                        if (!ev.is_dict()) continue;
-                        const TwValue::Dict &em = ev.as_dict();
-                        TwValue::Dict::const_iterator s_it = em.find("subject");
-                        TwValue::Dict::const_iterator o_it = em.find("object");
-                        TwValue::Dict::const_iterator r_it = em.find("rel");
-                        if (s_it == em.end() || o_it == em.end() || r_it == em.end()) continue;
-                        rebac_graph->add_edge(s_it->second.as_string(), o_it->second.as_string(),
-                                r_it->second.as_string());
-                    }
-                }
-                TwValue::Dict::const_iterator gd_it = gm.find("definitions");
-                if (gd_it != gm.end() && gd_it->second.is_dict()) {
-                    for (const std::pair<const std::string, TwValue> &dp : gd_it->second.as_dict())
-                        rebac_graph->define(dp.first, dp.second);
+        // Optional explicit relationship graph, merged into the same graph
+        // the "entities" capability edges above already populated.
+        TwValue::Dict::const_iterator graph_it = caps.find("graph");
+        if (graph_it != caps.end() && graph_it->second.is_dict()) {
+            const TwValue::Dict &gm = graph_it->second.as_dict();
+            TwValue::Dict::const_iterator ge_it = gm.find("edges");
+            if (ge_it != gm.end() && ge_it->second.is_array()) {
+                for (const TwValue &ev : ge_it->second.as_array()) {
+                    if (!ev.is_dict()) continue;
+                    const TwValue::Dict &em = ev.as_dict();
+                    TwValue::Dict::const_iterator s_it = em.find("subject");
+                    TwValue::Dict::const_iterator o_it = em.find("object");
+                    TwValue::Dict::const_iterator r_it = em.find("rel");
+                    if (s_it == em.end() || o_it == em.end() || r_it == em.end()) continue;
+                    rebac_graph->add_edge(s_it->second.as_string(), o_it->second.as_string(),
+                            r_it->second.as_string());
                 }
             }
-
-            // actions: {action: [cap_name | {"rel":expr,"object":obj}, ...]}
-            TwValue::Dict::const_iterator act_cap_it = caps.find("actions");
-            if (act_cap_it != caps.end() && act_cap_it->second.is_dict()) {
-                for (const std::pair<const std::string, TwValue> &ap : act_cap_it->second.as_dict()) {
-                    if (!ap.second.is_array()) continue;
-                    std::vector<std::pair<TwValue, std::string>> &req = action_required[ap.first];
-                    for (const TwValue &cv : ap.second.as_array()) {
-                        if (cv.is_string()) {
-                            TwValue::Dict base_expr;
-                            base_expr["type"] = TwValue(std::string("base"));
-                            base_expr["rel"] = TwValue(std::string("HAS_CAPABILITY"));
-                            req.emplace_back(TwValue(std::move(base_expr)), cv.as_string());
-                        } else if (cv.is_dict()) {
-                            const TwValue::Dict &em = cv.as_dict();
-                            TwValue::Dict::const_iterator rel_it = em.find("rel");
-                            TwValue::Dict::const_iterator obj_it = em.find("object");
-                            if (rel_it != em.end() && obj_it != em.end())
-                                req.emplace_back(rel_it->second, obj_it->second.as_string());
-                        }
-                    }
-                }
+            TwValue::Dict::const_iterator gd_it = gm.find("definitions");
+            if (gd_it != gm.end() && gd_it->second.is_dict()) {
+                for (const std::pair<const std::string, TwValue> &dp : gd_it->second.as_dict())
+                    rebac_graph->define(dp.first, dp.second);
             }
         }
     }
@@ -1301,13 +1281,7 @@ inline TwLoaded load_domain(const TwValue &data) {
     // initial one.
     result.state->rebac_graph = rebac_graph;
 
-    // Actions — a capability requirement compiles into an ordinary
-    // {"eval": {"type": "rebac/check", ...}} guard step prepended to the
-    // action's own body, reusing the exact mechanism every action already
-    // has for any other precondition (build_action's "eval" step handling
-    // below) instead of a bespoke TwActionFn-wrapping closure. The flat/
-    // graph capabilities.actions wire shape (parsed above into
-    // `action_required`) is unchanged — only how it's *compiled* changes.
+    // Actions
     if (auto it = d.find("actions"); it != d.end() && it->second.is_dict()) {
         for (const std::pair<const std::string, TwValue> &np : it->second.as_dict()) {
             if (!np.second.is_dict()) continue;
@@ -1316,38 +1290,6 @@ inline TwLoaded load_domain(const TwValue &data) {
             TwValue::Dict::const_iterator dur_it = adef.find("duration");
             if (dur_it != adef.end() && dur_it->second.is_string())
                 result.domain.action_durations[np.first] = dur_it->second.as_string();
-
-            std::unordered_map<std::string, std::vector<std::pair<TwValue, std::string>>>::const_iterator rc_it =
-                action_required.find(np.first);
-            if ((rc_it != action_required.end()) && (!rc_it->second.empty())) {
-                TwValue::Array param_names;
-                if (auto pit = adef.find("params"); pit != adef.end() && pit->second.is_array())
-                    param_names = pit->second.as_array();
-                // Capability guards require the actor to be the action's
-                // first param, by convention (validated Elixir-side via the
-                // capability_actor_param_not_first_agent diagnostic).
-                std::string agent_ref = (param_names.empty())
-                        ? std::string() : ("{" + param_names[0].as_string() + "}");
-
-                TwValue::Array guard_steps;
-                for (const std::pair<TwValue, std::string> &req : rc_it->second) {
-                    TwValue::Dict node;
-                    node["type"]    = TwValue(std::string("rebac/check"));
-                    node["rel"]     = req.first;
-                    node["subject"] = TwValue(agent_ref);
-                    node["object"]  = TwValue(req.second);
-                    TwValue::Dict step;
-                    step["eval"] = TwValue(std::move(node));
-                    guard_steps.push_back(TwValue(std::move(step)));
-                }
-
-                TwValue::Array body;
-                if (auto bit = adef.find("body"); bit != adef.end() && bit->second.is_array())
-                    body = bit->second.as_array();
-                guard_steps.insert(guard_steps.end(),
-                        std::make_move_iterator(body.begin()), std::make_move_iterator(body.end()));
-                adef["body"] = TwValue(std::move(guard_steps));
-            }
 
             result.domain.actions[np.first] = build_action(adef, enums);
         }
