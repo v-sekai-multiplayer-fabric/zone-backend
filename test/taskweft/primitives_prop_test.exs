@@ -52,7 +52,7 @@ defmodule Taskweft.PrimitivesPropTest do
             }
           },
           "methods" => %{},
-          "tasks" => [["a_check"]]
+          "todo_list" => [["a_check"]]
         }
         |> Jason.encode!()
 
@@ -83,7 +83,7 @@ defmodule Taskweft.PrimitivesPropTest do
               }
             },
             "methods" => %{},
-            "tasks" => [["a_set"], ["a_check_new"]]
+            "todo_list" => [["a_set"], ["a_check_new"]]
           }
           |> Jason.encode!()
 
@@ -106,7 +106,7 @@ defmodule Taskweft.PrimitivesPropTest do
         }
       },
       "methods" => %{},
-      "tasks" => [["a_check"]]
+      "todo_list" => [["a_check"]]
     }
     |> Jason.encode!()
   end
@@ -190,7 +190,7 @@ defmodule Taskweft.PrimitivesPropTest do
                 ]
               }
             },
-            "tasks" => [["try_then_fallback"]]
+            "todo_list" => [["try_then_fallback"]]
           }
           |> Jason.encode!()
 

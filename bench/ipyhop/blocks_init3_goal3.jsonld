@@ -41,7 +41,7 @@
       ]
     }
   },
-  "tasks": [
+  "todo_list": [
     ["move_one", "1",  "table"],
     ["move_one", "19", "table"],
     ["move_one", "18", "table"],

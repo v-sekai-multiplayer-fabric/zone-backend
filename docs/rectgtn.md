@@ -10,14 +10,16 @@ JSON-LD shapes a domain may use.
 
 ## The three task kinds
 
-Everything in a domain's `tasks` list (and in each method's `subtasks`) is one
-of three kinds:
+Everything in a domain's `todo_list` (and in each method's `subtasks`) is one
+of three kinds. `todo_list` is GTPyHOP's own term for this exact heterogeneous
+list — `find_plan(state, todo_list)` — a name that fits because it mixes
+calls, goals, and multigoals, not one uniform thing:
 
 | Kind | JSON-LD form | Meaning |
 |------|--------------|---------|
 | **`TwCall`** | a call array `[name, arg…]` | name in `actions` → a primitive that runs; name in `methods` → a compound task decomposed via `alternatives` |
-| **`TwGoal`** | the `goals` key (array or object form) | desired `(pointer, value)` bindings, satisfied via goal methods |
-| **`TwMultiGoal`** | a `tasks` entry `{"multigoal": {…}}` | a set of bindings the planner backjumps over, choosing which to satisfy first |
+| **`TwGoal`** | a `todo_list` entry `{"goal": [{"pointer", "eq"}, …]}` | desired `(pointer, value)` bindings, satisfied via goal methods |
+| **`TwMultiGoal`** | a `todo_list` entry `{"multigoal": {…}}` | a set of bindings the planner backjumps over, choosing which to satisfy first |
 
 ## `TwCall` — call arrays
 
@@ -30,19 +32,21 @@ of three kinds:
              "do_b": {"params": [], "body": [{"pointer/set": "/done/b", "value": true}]}},
  "methods": {"top": {"params": [], "alternatives": [{"name": "seq",
                                                      "subtasks": [["do_a"], ["do_b"]]}]}},
- "tasks": [["top"]]}
+ "todo_list": [["top"]]}
 ```
 
 Effects use `pointer/set`; guards use `{"eval": {"type": "math/<op>", …}}`.
 
 ## `TwGoal` — goals
 
-A conjunction of desired `(pointer, value)` bindings, in two shapes:
+A conjunction of desired `(pointer, value)` bindings, as a `todo_list` entry —
+satisfied by goal methods, a domain-level `goals` map (a different, unrelated
+key: method *definitions*, not a task):
 
 ```json
 {"@type": "domain:Problem", "name": "switch_goal",
  "variables": [{"name": "switch", "init": {"x": false}}],
- "goals": [{"pointer": "/switch/x", "eq": true}]}
+ "todo_list": [{"goal": [{"pointer": "/switch/x", "eq": true}]}]}
 ```
 
 ```json
@@ -51,16 +55,22 @@ A conjunction of desired `(pointer, value)` bindings, in two shapes:
                    "alternatives": [{"name": "stack_it", "subtasks": [["stack", "block", "dest"]]}]}}}
 ```
 
+Since a goal method (`TwGoalMethodFn`) is mechanically identical to an
+ordinary method — invoked as `(state, [key, desired])` vs. `(state, args)` —
+every domain-style `goals` entry also registers as an ordinary method, so a
+problem may instead just call it directly as a `TwCall`:
+`"todo_list": [["pos", "a", "table"]]`.
+
 ## `TwMultiGoal` — multigoals
 
 ```json
 {"@type": "domain:Problem", "name": "switch_multigoal",
  "variables": [{"name": "switch", "init": {"x": false, "y": false}}],
- "tasks": [{"multigoal": {"switch": {"x": true, "y": true}}}]}
+ "todo_list": [{"multigoal": {"switch": {"x": true, "y": true}}}]}
 ```
 
-A `tasks` list may freely mix call arrays and multigoal objects:
-`"tasks": [["move_one", "a", "table"], {"multigoal": {"pos": {"c": "b"}}}]`.
+A `todo_list` may freely mix call arrays, goal, and multigoal objects:
+`"todo_list": [["move_one", "a", "table"], {"multigoal": {"pos": {"c": "b"}}}]`.
 
 ## Relationships and capabilities — one ReBAC graph
 

@@ -236,7 +236,7 @@ defmodule Taskweft.Iso8601DurationPropTest do
   # Returns true (skip) if the NIF is not loaded or the domain fails to parse.
   defp nif_agrees_on_total(duration_iso) do
     domain =
-      ~s({"actions":{"noop":{"duration":"#{duration_iso}"}},"tasks":[["noop"]],"state":{}})
+      ~s({"actions":{"noop":{"duration":"#{duration_iso}"}},"todo_list":[["noop"]],"state":{}})
 
     json = Taskweft.NIF.check_temporal(domain, ~s([["noop"]]), "PT0S")
 
@@ -255,7 +255,7 @@ defmodule Taskweft.Iso8601DurationPropTest do
   # Returns the total milliseconds reported, or raises if the NIF is not loaded.
   defp civil_total_ms(duration_iso, reference_date) do
     domain =
-      ~s({"actions":{"noop":{"duration":"#{duration_iso}"}},"tasks":[["noop"]],"state":{}})
+      ~s({"actions":{"noop":{"duration":"#{duration_iso}"}},"todo_list":[["noop"]],"state":{}})
 
     json = Taskweft.NIF.check_temporal_civil(domain, ~s([["noop"]]), "PT0S", reference_date)
     [_, total_iso] = Regex.run(~r{"total"\s*:\s*"([^"]+)"}, json)

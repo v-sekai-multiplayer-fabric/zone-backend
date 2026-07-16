@@ -35,7 +35,7 @@ defmodule Taskweft.CapabilitiesReBACTest do
             "body" => [%{"pointer/set" => "/done/a", "value" => true}]
           }
         },
-        "tasks" => [["a_fly", "drone_1"]]
+        "todo_list" => [["a_fly", "drone_1"]]
       })
       |> Jason.encode!()
     end
@@ -75,7 +75,7 @@ defmodule Taskweft.CapabilitiesReBACTest do
             "body" => [%{"pointer/set" => "/done/a", "value" => true}]
           }
         },
-        "tasks" => [["a_fly", "alice"]]
+        "todo_list" => [["a_fly", "alice"]]
       })
       |> Jason.encode!()
     end
@@ -114,7 +114,7 @@ defmodule Taskweft.CapabilitiesReBACTest do
             "body" => [%{"pointer/set" => "/done/a", "value" => true}]
           }
         },
-        "tasks" => [["a_fly", "drone_1"]]
+        "todo_list" => [["a_fly", "drone_1"]]
       })
       |> Jason.encode!()
     end
@@ -160,7 +160,7 @@ defmodule Taskweft.CapabilitiesReBACTest do
             ]
           }
         },
-        "tasks" => [["a_fly", "drone_1"]]
+        "todo_list" => [["a_fly", "drone_1"]]
       })
       |> Jason.encode!()
     end

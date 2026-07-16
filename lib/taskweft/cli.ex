@@ -31,7 +31,7 @@ defmodule Taskweft.CLI do
   the C++ `TwLoader::load_file_pair`
   merges them: problem `variables` override domain state by name, problem
   `methods` / `actions` / `goal_methods` extend or override the domain, and a
-  non-empty problem `tasks` replaces the domain task list.
+  non-empty problem `todo_list` replaces the domain's todo list.
 
   ## Structure
 
@@ -274,8 +274,8 @@ defmodule Taskweft.CLI do
   end
 
   defp merge_tasks(domain, problem) do
-    case Map.get(problem, "tasks") do
-      tasks when is_list(tasks) and tasks != [] -> Map.put(domain, "tasks", tasks)
+    case Map.get(problem, "todo_list") do
+      tasks when is_list(tasks) and tasks != [] -> Map.put(domain, "todo_list", tasks)
       _ -> domain
     end
   end

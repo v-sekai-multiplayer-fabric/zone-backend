@@ -179,16 +179,16 @@ defmodule Taskweft.JSONLD.Loader do
 
   defp check_action_duration(_name, _defn), do: :ok
 
-  # Each call in `tasks` and in method `subtasks` is `[name, arg1, arg2, ...]`.
+  # Each call in `todo_list` and in method `subtasks` is `[name, arg1, arg2, ...]`.
   # When `name` is a known action or method, `length(args)` must match the
   # callee's `params` arity. Unknown names are left to the planner.
   defp check_arity(doc) do
     actions = Map.get(doc, "actions", %{})
     methods = Map.get(doc, "methods", %{})
-    tasks = Map.get(doc, "tasks", [])
+    tasks = Map.get(doc, "todo_list", [])
     arity_index = arity_index(actions, methods)
 
-    with :ok <- check_calls(tasks, arity_index, "tasks") do
+    with :ok <- check_calls(tasks, arity_index, "todo_list") do
       methods
       |> Enum.reduce_while(:ok, fn {mname, mdef}, _ ->
         case check_calls(method_subtasks(mdef), arity_index, "method #{mname}") do

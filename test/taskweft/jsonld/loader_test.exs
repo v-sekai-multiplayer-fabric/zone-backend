@@ -20,47 +20,90 @@ defmodule Taskweft.JSONLD.LoaderTest do
 
   describe "validate/2 multigoal tasks" do
     test "accepts a {multigoal} task entry" do
-      doc = base(%{"tasks" => [%{"multigoal" => %{"pos" => %{"a" => "table", "b" => "a"}}}]})
+      doc = base(%{"todo_list" => [%{"multigoal" => %{"pos" => %{"a" => "table", "b" => "a"}}}]})
       assert :ok = Loader.validate(doc, %{})
     end
 
     test "accepts a call array and a multigoal task in the same list" do
       doc =
         base(%{
-          "tasks" => [["move_one", "a", "table"], %{"multigoal" => %{"pos" => %{"c" => "b"}}}]
+          "todo_list" => [["move_one", "a", "table"], %{"multigoal" => %{"pos" => %{"c" => "b"}}}]
         })
 
       assert :ok = Loader.validate(doc, %{})
     end
 
     test "rejects an empty multigoal" do
-      doc = base(%{"tasks" => [%{"multigoal" => %{}}]})
+      doc = base(%{"todo_list" => [%{"multigoal" => %{}}]})
       assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/tasks/0"
+      assert msg =~ "#/todo_list/0"
     end
 
     test "rejects a multigoal var whose bindings are empty" do
-      doc = base(%{"tasks" => [%{"multigoal" => %{"pos" => %{}}}]})
+      doc = base(%{"todo_list" => [%{"multigoal" => %{"pos" => %{}}}]})
       assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/tasks/0"
+      assert msg =~ "#/todo_list/0"
     end
 
     test "rejects a multigoal var bound to a non-object" do
-      doc = base(%{"tasks" => [%{"multigoal" => %{"pos" => "table"}}]})
+      doc = base(%{"todo_list" => [%{"multigoal" => %{"pos" => "table"}}]})
       assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/tasks/0"
+      assert msg =~ "#/todo_list/0"
     end
 
     test "rejects a multigoal whose value is not an object" do
-      doc = base(%{"tasks" => [%{"multigoal" => "pos"}]})
+      doc = base(%{"todo_list" => [%{"multigoal" => "pos"}]})
       assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/tasks/0"
+      assert msg =~ "#/todo_list/0"
     end
 
-    test "rejects an object task that is not a multigoal" do
-      doc = base(%{"tasks" => [%{"goal" => %{}}]})
+    test "rejects an object task that is neither multigoal nor goal" do
+      doc = base(%{"todo_list" => [%{"unknown_kind" => %{}}]})
       assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/tasks/0"
+      assert msg =~ "#/todo_list/0"
+    end
+  end
+
+  describe "validate/2 goal tasks" do
+    test "accepts a {goal} task entry" do
+      doc = base(%{"todo_list" => [%{"goal" => [%{"pointer" => "/switch/x", "eq" => true}]}]})
+      assert :ok = Loader.validate(doc, %{})
+    end
+
+    test "accepts a call array and a goal task in the same list" do
+      doc =
+        base(%{
+          "todo_list" => [
+            ["move_one", "a", "table"],
+            %{"goal" => [%{"pointer" => "/switch/x", "eq" => true}]}
+          ]
+        })
+
+      assert :ok = Loader.validate(doc, %{})
+    end
+
+    test "rejects an empty goal binding list" do
+      doc = base(%{"todo_list" => [%{"goal" => []}]})
+      assert {:error, msg} = Loader.validate(doc, %{})
+      assert msg =~ "#/todo_list/0"
+    end
+
+    test "rejects a goal binding missing eq" do
+      doc = base(%{"todo_list" => [%{"goal" => [%{"pointer" => "/switch/x"}]}]})
+      assert {:error, msg} = Loader.validate(doc, %{})
+      assert msg =~ "#/todo_list/0"
+    end
+
+    test "rejects a goal binding missing pointer" do
+      doc = base(%{"todo_list" => [%{"goal" => [%{"eq" => true}]}]})
+      assert {:error, msg} = Loader.validate(doc, %{})
+      assert msg =~ "#/todo_list/0"
+    end
+
+    test "rejects a goal whose value is not an array" do
+      doc = base(%{"todo_list" => [%{"goal" => "not_a_list"}]})
+      assert {:error, msg} = Loader.validate(doc, %{})
+      assert msg =~ "#/todo_list/0"
     end
   end
 
@@ -218,7 +261,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
         "@type": "domain:Problem",
         "name": "switch_multigoal",
         "variables": [{"name": "switch", "init": {"x": false, "y": false}}],
-        "tasks": [{"multigoal": {"switch": {"x": true, "y": true}}}]
+        "todo_list": [{"multigoal": {"switch": {"x": true, "y": true}}}]
       })
 
       assert {:ok, _compact} = Loader.load_string(json)
@@ -230,7 +273,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
         "@type": "domain:Problem",
         "name": "switch_goal",
         "variables": [{"name": "switch", "init": {"x": false}}],
-        "goals": [{"pointer": "/switch/x", "eq": true}]
+        "todo_list": [{"goal": [{"pointer": "/switch/x", "eq": true}]}]
       })
 
       assert {:ok, _compact} = Loader.load_string(json)
@@ -312,7 +355,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
   # and can never coexist in a single merged document — so Taskweft.CLI's
   # merge/2 (deliberately) never touches "goals" at all, meaning a problem's
   # actual goal was previously silently dropped whenever the paired domain
-  # had its own default "tasks" (every bundled *_goal.jsonld fixture "plans"
+  # had its own default "todo_list" (every bundled *_goal.jsonld fixture "plans"
   # today only because its domain's canned tasks happen to already match the
   # intended goal — proven by swapping in a genuinely different goal and
   # getting a byte-identical plan back).
@@ -321,7 +364,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
   # TwMethodFn (tw_domain.hpp) — invoked as (state, [key, desired]), which is
   # mechanically identical to an ordinary method call [goal_var, key,
   # desired]. Domain-style "goals" methods now also register under
-  # task_methods, so a problem expresses its goal as an ordinary "tasks"
+  # task_methods, so a problem expresses its goal as an ordinary "todo_list"
   # entry (["pos", "a", "table"]) instead of the special "goals" key — merged
   # via the already-correct merge_tasks path, no "goals" merge needed at all.
   describe "goal-methods are directly callable as ordinary tasks" do
@@ -332,7 +375,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
     test "two different goals produce two genuinely different plans", %{domain: domain} do
       plan_for = fn goal_task ->
         domain
-        |> Map.put("tasks", [goal_task])
+        |> Map.put("todo_list", [goal_task])
         |> Jason.encode!()
         |> Taskweft.plan()
         |> then(fn {:ok, json} -> Jason.decode!(json) end)
@@ -361,6 +404,6 @@ defmodule Taskweft.JSONLD.LoaderTest do
 
     domain
     |> Map.put("variables", kept ++ prob_vars)
-    |> Map.put("tasks", problem["tasks"])
+    |> Map.put("todo_list", problem["todo_list"])
   end
 end

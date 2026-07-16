@@ -95,5 +95,5 @@
   "multigoals": {
     "rearrange": {"goal_tag": null, "alternatives": [{"name": "move_blocks"}]}
   },
-  "tasks": [["move_one", "a", "table"], ["move_one", "c", "b"], ["move_one", "b", "a"]]
+  "todo_list": [["move_one", "a", "table"], ["move_one", "c", "b"], ["move_one", "b", "a"]]
 }

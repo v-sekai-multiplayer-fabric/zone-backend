@@ -31,5 +31,5 @@
       ]
     }
   },
-  "tasks": [["move_one", "a", "table"], ["move_one", "b", "c"], ["move_one", "a", "d"]]
+  "todo_list": [["move_one", "a", "table"], ["move_one", "b", "c"], ["move_one", "a", "d"]]
 }

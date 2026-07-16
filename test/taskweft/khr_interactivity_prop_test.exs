@@ -38,7 +38,7 @@ defmodule Taskweft.KHRInteractivityPropTest do
               [%{"pointer/set" => "/ok/v", "value" => true}]
         }
       },
-      "tasks" => [["a_check"]]
+      "todo_list" => [["a_check"]]
     })
   end
 
@@ -959,7 +959,7 @@ defmodule Taskweft.KHRInteractivityPropTest do
             ]
           }
         },
-        "tasks" => [["a_read"]]
+        "todo_list" => [["a_read"]]
       })
 
     assert_plans(domain)
