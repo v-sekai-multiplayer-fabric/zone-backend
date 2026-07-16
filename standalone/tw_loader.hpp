@@ -26,6 +26,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace TwLoader {
@@ -1156,8 +1157,30 @@ inline TwLoaded load_domain(const TwValue &data) {
     if (!data.is_dict()) {
         return result;
     }
-    result.state = std::make_shared<TwState>();
     const auto &d = data.as_dict();
+
+    // Whitelist: any key outside this set fails the load. A stale/misspelled
+    // key (e.g. the old "tasks" before the todo_list rename) used to be
+    // silently ignored — no error, no effect, just quietly dropped data —
+    // which is worse than a strict failure for a caller that mistyped or is
+    // still on an old shape. No free-form "notes"/"metadata" catch-all key
+    // is whitelisted, deliberately: JSON itself dropped comment syntax for
+    // exactly this reason (Crockford: comments got used to hold parsing
+    // directives, which destroys interoperability) — a permitted-but-ignored
+    // bucket inside the parsed document is the same hazard in a different
+    // shape.
+    static const std::unordered_set<std::string> kKnownKeys = {
+        "@context", "@type", "name", "description", "version", "source",
+        "enums", "variables", "actions", "methods", "goals", "todo_list",
+        "capabilities",
+    };
+    for (const std::pair<const std::string, TwValue> &kv : d) {
+        if (!kKnownKeys.count(kv.first)) {
+            return result;
+        }
+    }
+
+    result.state = std::make_shared<TwState>();
 
     // Enums
     if (auto it = d.find("enums"); it != d.end() && it->second.is_dict())
