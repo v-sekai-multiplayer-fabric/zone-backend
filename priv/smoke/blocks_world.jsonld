@@ -82,18 +82,13 @@
          "check": [{"eval": {"type": "math/eq", "a": {"type": "pointer/get", "pointer": "/holding/hand"}, "b": "{block}"}}],
          "subtasks": [["a_putdown", "{block}"]]}
       ]
-    }
-  },
-  "goals": {
+    },
     "pos": {
       "params": ["block", "dest"],
       "alternatives": [
         {"name": "move_via_hand", "subtasks": [["move_one", "{block}", "{dest}"]]}
       ]
     }
-  },
-  "multigoals": {
-    "rearrange": {"goal_tag": null, "alternatives": [{"name": "move_blocks"}]}
   },
   "todo_list": [["move_one", "a", "table"], ["move_one", "c", "b"], ["move_one", "b", "a"]]
 }
