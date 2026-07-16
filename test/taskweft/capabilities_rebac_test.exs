@@ -127,4 +127,54 @@ defmodule Taskweft.CapabilitiesReBACTest do
       refute plans?(union_domain(["swim"]))
     end
   end
+
+  describe "capability requirement composes with an ordinary eval guard" do
+    # Capability requirements now compile into an {"eval": {"type":
+    # "rebac/check", ...}} step prepended to the action's own body, instead
+    # of a separate bespoke guard mechanism — so a capability-guarded action
+    # can also carry an ordinary eval guard in its body, and BOTH must hold.
+    # This is the thing Phase 1 (composition over special forms) actually
+    # buys: one mechanism, not two independently-checked ones.
+    defp composed_domain(caps, ready?) do
+      domain(%{
+        "variables" => [
+          %{"name" => "done", "init" => %{"a" => false}},
+          %{"name" => "ready", "init" => %{"drone_1" => ready?}}
+        ],
+        "capabilities" => %{
+          "entities" => %{"drone_1" => caps},
+          "actions" => %{"a_fly" => ["fly"]}
+        },
+        "actions" => %{
+          "a_fly" => %{
+            "params" => ["agent"],
+            "body" => [
+              %{
+                "eval" => %{
+                  "type" => "math/eq",
+                  "a" => %{"type" => "pointer/get", "pointer" => "/ready/{agent}"},
+                  "b" => true
+                }
+              },
+              %{"pointer/set" => "/done/a", "value" => true}
+            ]
+          }
+        },
+        "tasks" => [["a_fly", "drone_1"]]
+      })
+      |> Jason.encode!()
+    end
+
+    test "capability held and eval guard passes -> plans" do
+      assert plans?(composed_domain(["fly"], true))
+    end
+
+    test "capability held but eval guard fails -> no plan" do
+      refute plans?(composed_domain(["fly"], false))
+    end
+
+    test "capability missing even though eval guard passes -> no plan" do
+      refute plans?(composed_domain(["swim"], true))
+    end
+  end
 end
