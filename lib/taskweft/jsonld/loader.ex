@@ -88,34 +88,44 @@ defmodule Taskweft.JSONLD.Loader do
   def validate(other, _ctx),
     do: {:error, "expected JSON-LD object, got #{inspect(other)}"}
 
-  # A function, not a module attribute: :code.priv_dir/1 must resolve against
-  # the running release's actual code path, not wherever `mix compile`
-  # happened to run — a `@schema_path` module attribute would bake in
-  # whatever that resolved to at compile time, the exact class of bug
-  # (build-stage-only path baked into a release) already found and fixed in
-  # taskweft/mcp's plans_root this session.
-  defp schema_path,
-    do: :code.priv_dir(:taskweft) |> Path.join("schemas/rectgtn_domain.schema.json")
-
-  defp json_schema do
-    case :persistent_term.get({__MODULE__, :schema}, nil) do
-      nil ->
-        schema =
-          schema_path()
+  # Embedded at compile time, not read from priv/ at runtime — this
+  # repo's own established pattern for small bundled static data
+  # (Taskweft.JSONLD.Context bakes its @context maps as module attributes
+  # rather than reading files from priv/). :code.priv_dir/1 resolution is
+  # correct in principle, but taskweft's own app priv/ directory turned out
+  # to not actually be present at all in the deployed release (`/app/lib/
+  # taskweft-<version>/priv` doesn't exist on the running machine) — some
+  # apps' priv/ ends up in the release depending on how it's referenced
+  # elsewhere in the build, and taskweft's own priv/ apparently never has
+  # been. Baking the content into the module at compile time sidesteps
+  # that packaging question entirely: it travels with the .beam file no
+  # matter what. @external_resource makes `mix compile` recompile this
+  # module when the schema file changes, so dev workflow still works.
+  #
+  # Path built from __DIR__, not a bare relative string — a relative path
+  # resolves against Mix's current working directory when it compiles this
+  # module, which for a path dependency is the *top-level* project's CWD
+  # (e.g. /app/deploy in the hosted Containerfile), not this dependency's
+  # own root (/app) — confirmed by reproducing the real Containerfile build.
+  # __DIR__ is always this source file's actual on-disk location, so it's
+  # correct regardless of which project is doing the compiling.
+  @schema_path Path.join([
+                 __DIR__,
+                 "..",
+                 "..",
+                 "..",
+                 "priv",
+                 "schemas",
+                 "rectgtn_domain.schema.json"
+               ])
+  @external_resource @schema_path
+  @schema @schema_path
           |> File.read!()
           |> Jason.decode!()
           |> ExJsonSchema.Schema.resolve()
 
-        :persistent_term.put({__MODULE__, :schema}, schema)
-        schema
-
-      schema ->
-        schema
-    end
-  end
-
   defp check_json_schema(doc) do
-    case ExJsonSchema.Validator.validate(json_schema(), doc) do
+    case ExJsonSchema.Validator.validate(@schema, doc) do
       :ok ->
         :ok
 

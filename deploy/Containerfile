@@ -29,11 +29,17 @@ RUN curl -fsSL -o /usr/local/bin/rebar3 https://github.com/erlang/rebar3/release
   && chmod +x /usr/local/bin/rebar3 \
   && mix local.rebar rebar3 /usr/local/bin/rebar3 --force
 
-# taskweft (the path-dep parent) — only its mix.exs + lib are needed, Mix
-# resolves the path dep's own deps from its mix.exs, not a separate lock.
+# taskweft (the path-dep parent) — mix.exs + lib, and priv (some modules
+# embed bundled static data at compile time via @external_resource +
+# File.read!, e.g. lib/taskweft/jsonld/loader.ex's JSON Schema — that read
+# happens during `mix compile` below, so priv/ must exist in this build
+# stage even though the resulting release doesn't need its own runtime copy
+# of that specific file, since the content is baked into the .beam).
+# Mix resolves the path dep's own deps from its mix.exs, not a separate lock.
 WORKDIR /app
 COPY mix.exs ./
 COPY lib lib
+COPY priv priv
 
 WORKDIR /app/deploy
 COPY deploy/mix.exs deploy/mix.lock* ./
