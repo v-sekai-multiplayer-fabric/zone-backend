@@ -1387,6 +1387,23 @@ inline TwLoaded load_domain(const TwValue &data) {
                     if (!alt.is_dict()) continue;
                     fns.push_back(build_goal_method_alt(goal_params, alt.as_dict(), enums));
                 }
+
+                // TwGoalMethodFn IS TwMethodFn (tw_domain.hpp) — a goal method
+                // invoked as (state, [key, desired]) is mechanically identical
+                // to an ordinary method call [goal_var, key, desired]. Register
+                // it under task_methods too so it's directly callable from an
+                // ordinary "tasks" entry, not reachable only via a TwGoalBinding
+                // pushed from a top-level array-form "goals". This is what lets
+                // a problem express its target as ["pos", "a", "table"] in its
+                // own "tasks" list — merged the same well-tested way any other
+                // task is (Taskweft.CLI's merge_tasks) — instead of needing the
+                // separate top-level "goals" key, which collides: a domain's
+                // "goals" (this map, defining methods) and a problem's "goals"
+                // (an array of desired bindings) can't coexist in one merged
+                // document since they're the same JSON key. The array form
+                // still works standalone (TwGoalBinding, below) for a document
+                // that doesn't need to merge with a separate problem file.
+                result.domain.task_methods[goal_var] = fns;
                 result.domain.goal_methods[goal_var] = std::move(fns);
             }
         } else if (it->second.is_array()) {
