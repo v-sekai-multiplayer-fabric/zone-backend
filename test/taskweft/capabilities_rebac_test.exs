@@ -3,12 +3,19 @@
 
 defmodule Taskweft.CapabilitiesReBACTest do
   @moduledoc """
-  Coverage for ADR 0004 (unify domain `capabilities` with the ReBAC
+  Coverage for ADR 0004 (unify domain capabilities with the ReBAC
   relation-expression engine, taskweft#96): action capability guards are
   evaluated against a `TwReBAC::TwReBACGraph` (`tw_rebac.hpp`) rather than
   precomputed booleans, so a domain can express requirements the old flat
   `{"entities": ..., "actions": ...}` shape could not — transitive team
   membership, and composed relation expressions (union/intersection/...).
+
+  The graph data lives in a dedicated top-level "capabilities" key (ADR
+  0004), matching glTF Interactivity's own convention that structured/
+  relational extension data gets its own namespaced slot rather than
+  sharing the generic scalar/vector "variables" array. An action
+  requirement is an explicit {"eval": {"type": "rebac/check", ...}} guard
+  step written directly into the action's own body — no compiled sugar.
   """
   use ExUnit.Case, async: true
 
@@ -21,18 +28,24 @@ defmodule Taskweft.CapabilitiesReBACTest do
     end
   end
 
-  describe "backward compatibility: flat entities/actions shape" do
+  defp rebac_check_step(rel, subject, object) do
+    %{
+      "eval" => %{"type" => "rebac/check", "rel" => rel, "subject" => subject, "object" => object}
+    }
+  end
+
+  describe "backward compatibility: flat entities shape" do
     defp flat_domain(entity_caps) do
       domain(%{
         "variables" => [%{"name" => "done", "init" => %{"a" => false}}],
-        "capabilities" => %{
-          "entities" => %{"drone_1" => entity_caps},
-          "actions" => %{"a_fly" => ["fly"]}
-        },
+        "capabilities" => %{"entities" => %{"drone_1" => entity_caps}},
         "actions" => %{
           "a_fly" => %{
             "params" => ["agent"],
-            "body" => [%{"pointer/set" => "/done/a", "value" => true}]
+            "body" => [
+              rebac_check_step("HAS_CAPABILITY", "{agent}", "fly"),
+              %{"pointer/set" => "/done/a", "value" => true}
+            ]
           }
         },
         "todo_list" => [["a_fly", "drone_1"]]
@@ -66,13 +79,15 @@ defmodule Taskweft.CapabilitiesReBACTest do
               edges ++
                 [%{"subject" => "flight_team", "object" => "fly", "rel" => "HAS_CAPABILITY"}],
             "definitions" => %{}
-          },
-          "actions" => %{"a_fly" => ["fly"]}
+          }
         },
         "actions" => %{
           "a_fly" => %{
             "params" => ["agent"],
-            "body" => [%{"pointer/set" => "/done/a", "value" => true}]
+            "body" => [
+              rebac_check_step("HAS_CAPABILITY", "{agent}", "fly"),
+              %{"pointer/set" => "/done/a", "value" => true}
+            ]
           }
         },
         "todo_list" => [["a_fly", "alice"]]
@@ -93,25 +108,22 @@ defmodule Taskweft.CapabilitiesReBACTest do
     defp union_domain(caps) do
       domain(%{
         "variables" => [%{"name" => "done", "init" => %{"a" => false}}],
-        "capabilities" => %{
-          "entities" => %{"drone_1" => caps},
-          "actions" => %{
-            "a_fly" => [
-              %{
-                "rel" => %{
+        "capabilities" => %{"entities" => %{"drone_1" => caps}},
+        "actions" => %{
+          "a_fly" => %{
+            "params" => ["agent"],
+            "body" => [
+              rebac_check_step(
+                %{
                   "type" => "union",
                   "a" => %{"type" => "base", "rel" => "HAS_CAPABILITY"},
                   "b" => %{"type" => "base", "rel" => "HAS_CAPABILITY"}
                 },
-                "object" => "fly"
-              }
+                "{agent}",
+                "fly"
+              ),
+              %{"pointer/set" => "/done/a", "value" => true}
             ]
-          }
-        },
-        "actions" => %{
-          "a_fly" => %{
-            "params" => ["agent"],
-            "body" => [%{"pointer/set" => "/done/a", "value" => true}]
           }
         },
         "todo_list" => [["a_fly", "drone_1"]]
@@ -129,26 +141,24 @@ defmodule Taskweft.CapabilitiesReBACTest do
   end
 
   describe "capability requirement composes with an ordinary eval guard" do
-    # Capability requirements now compile into an {"eval": {"type":
-    # "rebac/check", ...}} step prepended to the action's own body, instead
-    # of a separate bespoke guard mechanism — so a capability-guarded action
-    # can also carry an ordinary eval guard in its body, and BOTH must hold.
-    # This is the thing Phase 1 (composition over special forms) actually
-    # buys: one mechanism, not two independently-checked ones.
+    # A rebac/check guard is an ordinary eval body step now, the same
+    # mechanism every other action precondition already uses — so a
+    # capability-guarded action can also carry an ordinary eval guard in
+    # its body, and BOTH must hold. This is the thing Phase 1 (composition
+    # over special forms) actually buys: one mechanism, not two
+    # independently-checked ones.
     defp composed_domain(caps, ready?) do
       domain(%{
         "variables" => [
           %{"name" => "done", "init" => %{"a" => false}},
           %{"name" => "ready", "init" => %{"drone_1" => ready?}}
         ],
-        "capabilities" => %{
-          "entities" => %{"drone_1" => caps},
-          "actions" => %{"a_fly" => ["fly"]}
-        },
+        "capabilities" => %{"entities" => %{"drone_1" => caps}},
         "actions" => %{
           "a_fly" => %{
             "params" => ["agent"],
             "body" => [
+              rebac_check_step("HAS_CAPABILITY", "{agent}", "fly"),
               %{
                 "eval" => %{
                   "type" => "math/eq",

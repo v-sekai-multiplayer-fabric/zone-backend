@@ -55,7 +55,7 @@ defmodule Taskweft.JSONLD.LoaderVarRefsPropTest do
     %{
       "@type" => "domain:Definition",
       "name" => "prop",
-      "variables" => Enum.map(globals, &%{"name" => &1, "init" => %{}}),
+      "variables" => Enum.map(globals, &%{"name" => &1, "type" => "ref", "init" => %{}}),
       "actions" => %{
         "a1" => %{
           "params" => params,
@@ -69,7 +69,7 @@ defmodule Taskweft.JSONLD.LoaderVarRefsPropTest do
     %{
       "@type" => "domain:Definition",
       "name" => "prop",
-      "variables" => Enum.map(globals, &%{"name" => &1, "init" => %{}}),
+      "variables" => Enum.map(globals, &%{"name" => &1, "type" => "ref", "init" => %{}}),
       "methods" => %{
         "m1" => %{
           "params" => params,

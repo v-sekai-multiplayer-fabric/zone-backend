@@ -108,15 +108,14 @@ defmodule Taskweft.JSONLD.LoaderTest do
   end
 
   describe "validate/2 capabilities (RECTGTN 'R'/'C')" do
+    # A dedicated top-level "capabilities" key (ADR 0004) — structured/
+    # relational graph data gets its own namespaced slot, matching glTF
+    # Interactivity's own convention for extension data that isn't a
+    # scalar/vector value socket. An action requirement is not a separate
+    # validated shape: it's a hand-written {"eval": {"type": "rebac/check",
+    # ...}} step, covered by the ordinary body_step schema.
     test "accepts a well-formed capabilities object" do
-      doc =
-        base(%{
-          "capabilities" => %{
-            "entities" => %{"drone_1" => ["fly"]},
-            "actions" => %{"a_fly" => ["fly"], "a_walk" => ["walk"]}
-          }
-        })
-
+      doc = base(%{"capabilities" => %{"entities" => %{"drone_1" => ["fly"]}}})
       assert :ok = Loader.validate(doc, %{})
     end
 
@@ -124,13 +123,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
       assert :ok = Loader.validate(base(%{}), %{})
     end
 
-    test "accepts entities or actions being omitted" do
-      assert :ok =
-               Loader.validate(base(%{"capabilities" => %{"entities" => %{"a" => ["x"]}}}), %{})
-
-      assert :ok =
-               Loader.validate(base(%{"capabilities" => %{"actions" => %{"a" => ["x"]}}}), %{})
-
+    test "accepts entities being omitted" do
       assert :ok = Loader.validate(base(%{"capabilities" => %{}}), %{})
     end
 
@@ -140,7 +133,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
       assert msg =~ "#/capabilities"
     end
 
-    test "rejects a non-object entities/actions group" do
+    test "rejects a non-object entities group" do
       doc = base(%{"capabilities" => %{"entities" => ["fly"]}})
       assert {:error, msg} = Loader.validate(doc, %{})
       assert msg =~ "#/capabilities/entities"
@@ -150,41 +143,6 @@ defmodule Taskweft.JSONLD.LoaderTest do
       doc = base(%{"capabilities" => %{"entities" => %{"drone_1" => [1]}}})
       assert {:error, msg} = Loader.validate(doc, %{})
       assert msg =~ "#/capabilities/entities/drone_1"
-    end
-
-    test "rejects a capability value that is not an array" do
-      doc = base(%{"capabilities" => %{"actions" => %{"a_fly" => "fly"}}})
-      assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/capabilities/actions/a_fly"
-    end
-
-    test "accepts a full relation-expression requirement (ADR 0004)" do
-      doc =
-        base(%{
-          "capabilities" => %{
-            "actions" => %{
-              "a_fly" => [
-                %{"rel" => %{"type" => "base", "rel" => "HAS_CAPABILITY"}, "object" => "fly"}
-              ]
-            }
-          }
-        })
-
-      assert :ok = Loader.validate(doc, %{})
-    end
-
-    test "rejects a relation-expression requirement missing \"object\"" do
-      doc =
-        base(%{
-          "capabilities" => %{
-            "actions" => %{
-              "a_fly" => [%{"rel" => %{"type" => "base", "rel" => "HAS_CAPABILITY"}}]
-            }
-          }
-        })
-
-      assert {:error, msg} = Loader.validate(doc, %{})
-      assert msg =~ "#/capabilities/actions/a_fly"
     end
 
     test "accepts an explicit ReBAC graph" do
@@ -260,7 +218,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
         "@context": {"khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/", "domain": "khr:planning/domain/"},
         "@type": "domain:Problem",
         "name": "switch_multigoal",
-        "variables": [{"name": "switch", "init": {"x": false, "y": false}}],
+        "variables": [{"name": "switch", "type": "bool", "init": {"x": false, "y": false}}],
         "todo_list": [{"multigoal": {"switch": {"x": true, "y": true}}}]
       })
 
@@ -272,7 +230,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
         "@context": {"khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/", "domain": "khr:planning/domain/"},
         "@type": "domain:Problem",
         "name": "switch_goal",
-        "variables": [{"name": "switch", "init": {"x": false}}],
+        "variables": [{"name": "switch", "type": "bool", "init": {"x": false}}],
         "todo_list": [{"goal": [{"pointer": "/switch/x", "eq": true}]}]
       })
 

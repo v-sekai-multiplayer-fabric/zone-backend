@@ -30,17 +30,7 @@
     },
     "variables": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["name"],
-        "properties": {
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "init": {
-            "description": "Optional: a domain may declare a variable with no init at all, relying entirely on a paired problem's own variables entry to supply it at merge time (e.g. service_bringup.jsonld's per-item phase/approach state — \"key space supplied by the problem\")."
-          }
-        }
-      }
+      "items": { "$ref": "#/$defs/variable" }
     },
     "actions": {
       "type": "object",
@@ -56,8 +46,8 @@
     },
     "capabilities": {
       "type": "object",
+      "description": "ReBAC capability/relationship data (ADR 0004) — a dedicated top-level key, matching glTF Interactivity's own convention that structured/relational extension data (e.g. KHR_lights_punctual's \"/extensions/KHR_lights_punctual/lights\") gets its own namespaced slot rather than sharing the generic scalar/vector \"variables\" array. An action requirement is not sugar here: write the {\"eval\": {\"type\": \"rebac/check\", ...}} guard step directly into the action's own body.",
       "properties": {
-        "description": { "type": "string" },
         "entities": {
           "type": "object",
           "additionalProperties": {
@@ -65,18 +55,71 @@
             "items": { "type": "string" }
           }
         },
-        "actions": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "array",
-            "items": { "$ref": "#/$defs/capability_requirement" }
-          }
-        },
         "graph": { "$ref": "#/$defs/rebac_graph" }
       }
     }
   },
   "$defs": {
+    "variable": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "type": {
+          "description": "Fluent type — mandatory, like a Godot Variant-typed export or a glTF Interactivity socket. Exactly glTF Interactivity's own value-type vocabulary (KHR_interactivity socket/custom-variable types), no RECTGTN extensions: bool, float, float2/3/4, float2x2/3x3/4x4, int, ref. There is no \"string\" type: what looks like free text in RECTGTN state (a block's position \"table\"/\"hand\", an agent name) is an opaque identity reference compared for equality, not text being manipulated — exactly \"ref\" (\"an opaque reference value\", KHR_interactivity core concepts). There is no \"enum\" type: a symbolic/discrete/named-class concept is capability/ReBAC membership (an entity IS_MEMBER_OF or HAS_CAPABILITY a class), not a separate int-lookup-table mechanism. ReBAC graph data itself lives in the dedicated top-level \"capabilities\" key, not a variable — structured/relational data gets its own namespaced slot, matching glTF Interactivity's own convention for extension data that isn't a scalar/vector value socket. Type declaration doesn't change what the NIF loader does with the value — it's shape documentation and validation only.",
+          "enum": [
+            "bool", "int", "float", "float2", "float3", "float4",
+            "float2x2", "float3x3", "float4x4", "ref"
+          ]
+        },
+        "init": {
+          "description": "Optional: a domain may declare a variable with no init at all, relying entirely on a paired problem's own variables entry to supply it at merge time (e.g. service_bringup.jsonld's per-item phase/approach state — \"key space supplied by the problem\"). Shape depends on \"type\" — either a bare value of that type (a single-valued fluent) or an object mapping arbitrary instance keys to values of that type (a per-entity fluent, e.g. {\"drone_1\": ..., \"drone_2\": ...} — the overwhelmingly common case in bundled domains)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "bool" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/bool" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "int" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/int" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float2" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float2" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float3" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float3" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float4" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float4" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float2x2" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float2x2" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float3x3" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float3x3" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float4x4" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/float4x4" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "ref" } }, "required": ["type"] },
+          "then": { "properties": { "init": { "$ref": "#/$defs/init_of/ref" } } }
+        }
+      ]
+    },
     "action": {
       "type": "object",
       "properties": {
@@ -179,19 +222,6 @@
         }
       ]
     },
-    "capability_requirement": {
-      "oneOf": [
-        { "type": "string" },
-        {
-          "type": "object",
-          "required": ["rel", "object"],
-          "properties": {
-            "rel": { "type": "object" },
-            "object": { "type": "string" }
-          }
-        }
-      ]
-    },
     "rebac_graph": {
       "type": "object",
       "properties": {
@@ -208,6 +238,71 @@
           }
         },
         "definitions": { "type": "object" }
+      }
+    },
+    "init_of": {
+      "bool": { "oneOf": [{ "type": "boolean" }, { "type": "object", "additionalProperties": { "type": "boolean" } }] },
+      "int": { "oneOf": [{ "type": "integer" }, { "type": "object", "additionalProperties": { "type": "integer" } }] },
+      "float": { "oneOf": [{ "type": "number" }, { "type": "object", "additionalProperties": { "type": "number" } }] },
+      "float2": {
+        "$comment": "A component vector is a fixed-length array of numbers, e.g. [x, y] — glTF Interactivity's own convention for vector value sockets.",
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+          {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }
+          }
+        ]
+      },
+      "float3": {
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+          {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+          }
+        ]
+      },
+      "float4": {
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 }
+          }
+        ]
+      },
+      "float2x2": {
+        "$comment": "Flat column-major array of 4 numbers, matching glTF's own matrix wire convention (e.g. accessor data) rather than a nested array-of-rows.",
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 }
+          }
+        ]
+      },
+      "float3x3": {
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" }, "minItems": 9, "maxItems": 9 },
+          {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 9, "maxItems": 9 }
+          }
+        ]
+      },
+      "float4x4": {
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" }, "minItems": 16, "maxItems": 16 },
+          {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 16, "maxItems": 16 }
+          }
+        ]
+      },
+      "ref": {
+        "$comment": "An opaque reference value — represented on the wire as a string identity token, never compared/ordered beyond equality.",
+        "oneOf": [{ "type": "string" }, { "type": "object", "additionalProperties": { "type": "string" } }]
       }
     }
   }

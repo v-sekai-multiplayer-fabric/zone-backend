@@ -115,33 +115,42 @@ chain, e.g. membership, before checking the inner expression).
 A `TwCall`, `TwGoal`, or `TwMultiGoal` domain may add either or both.
 
 **Capabilities** — a top-level `capabilities` object binds which entities hold
-which capabilities, which capabilities each action requires, and (optionally)
-an explicit relationship graph:
+which capabilities, and (optionally) an explicit relationship graph. This is
+a dedicated top-level key, not a variable: structured/relational data gets
+its own namespaced slot, matching glTF Interactivity's own convention for
+extension data that isn't a scalar/vector value socket (e.g.
+`KHR_lights_punctual`'s `/extensions/KHR_lights_punctual/lights`).
 
 ```json
 "capabilities": {
   "entities": {"<entity>": ["<cap>", ...], ...},
-  "actions":   {"<action>": ["<cap>", {"rel": <relation-expression>, "object": "<obj>"}, ...], ...},
   "graph":     {"edges": [...], "definitions": {}}
 }
 ```
 
-`entities` compiles to direct `HAS_CAPABILITY` edges. Each `actions` entry is
-either a bare capability name (sugar for a direct `HAS_CAPABILITY` check) or
-a full `{"rel": expr, "object": obj}` requirement — e.g. an agent qualifies if
-it's a *member of a team* that holds the capability, not just a direct
-holder:
+`entities` compiles to direct `HAS_CAPABILITY` edges. There is no compiled
+sugar for action requirements: write the guard directly into the action's
+own body as an ordinary `{"eval": {"type": "rebac/check", "rel": <relation>,
+"subject": <ref>, "object": <cap>}}` step — the same mechanism every other
+action precondition already uses. An agent qualifies if it's a *member of a
+team* that holds the capability, not just a direct holder, by expressing
+`rel` as a relation expression rather than a bare name:
 
 ```json
 "capabilities": {
   "graph": {"edges": [{"subject": "alice", "rel": "IS_MEMBER_OF", "object": "flight_team"},
-                      {"subject": "flight_team", "rel": "HAS_CAPABILITY", "object": "fly"}]},
-  "actions": {"a_fly": ["fly"]}
+                      {"subject": "flight_team", "rel": "HAS_CAPABILITY", "object": "fly"}]}
+},
+"actions": {
+  "a_fly": {"params": ["agent"],
+            "body": [{"eval": {"type": "rebac/check", "rel": "HAS_CAPABILITY",
+                                "subject": "{agent}", "object": "fly"}},
+                      {"pointer/set": "/loc/{agent}", "value": "..."}]}
 }
 ```
 
-An action only applies to an agent for whom every requirement holds; the
-planner tries the next alternative otherwise.
+An action only applies to an agent for whom the guard holds; the planner
+tries the next alternative otherwise (or reports no plan if none qualify).
 
 **Temporal duration** — any action may carry `"duration": "<ISO 8601>"` (e.g.
 `"PT5M"`); actions without one default to `"PT0S"`. Every `plan` response
