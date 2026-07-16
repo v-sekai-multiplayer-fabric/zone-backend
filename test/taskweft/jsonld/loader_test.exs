@@ -356,6 +356,46 @@ defmodule Taskweft.JSONLD.LoaderTest do
     end
   end
 
+  # A domain-style "goals" map (goal-method definitions, keyed by state var)
+  # and a problem-style "goals" array (desired bindings) share one JSON key
+  # and can never coexist in a single merged document — so Taskweft.CLI's
+  # merge/2 (deliberately) never touches "goals" at all, meaning a problem's
+  # actual goal was previously silently dropped whenever the paired domain
+  # had its own default "tasks" (every bundled *_goal.jsonld fixture "plans"
+  # today only because its domain's canned tasks happen to already match the
+  # intended goal — proven by swapping in a genuinely different goal and
+  # getting a byte-identical plan back).
+  #
+  # The fix isn't a smarter merge: a goal-method (TwGoalMethodFn) IS a
+  # TwMethodFn (tw_domain.hpp) — invoked as (state, [key, desired]), which is
+  # mechanically identical to an ordinary method call [goal_var, key,
+  # desired]. Domain-style "goals" methods now also register under
+  # task_methods, so a problem expresses its goal as an ordinary "tasks"
+  # entry (["pos", "a", "table"]) instead of the special "goals" key — merged
+  # via the already-correct merge_tasks path, no "goals" merge needed at all.
+  describe "goal-methods are directly callable as ordinary tasks" do
+    setup do
+      {:ok, domain: read_json(Path.join([@plans, "domains", "blocks_world.jsonld"]))}
+    end
+
+    test "two different goals produce two genuinely different plans", %{domain: domain} do
+      plan_for = fn goal_task ->
+        domain
+        |> Map.put("tasks", [goal_task])
+        |> Jason.encode!()
+        |> Taskweft.plan()
+        |> then(fn {:ok, json} -> Jason.decode!(json) end)
+      end
+
+      a_to_table = plan_for.(["pos", "a", "table"])["plan"]
+      c_to_a = plan_for.(["pos", "c", "a"])["plan"]
+
+      refute a_to_table == c_to_a
+      assert ["a_pickup", "c"] in c_to_a
+      assert ["a_stack", "c", "a"] in c_to_a
+    end
+  end
+
   defp read_json(path), do: path |> File.read!() |> Jason.decode!()
 
   # Mirror TwLoader::load_file_pair for this case: the problem's state
