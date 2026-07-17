@@ -1,0 +1,216 @@
+cff-version: 1.2.0
+message: >-
+  If you use taskweft, please cite it using the metadata below.
+  The references list credits prior work referenced by the
+  project's design and planning documents (see plans/).
+title: "taskweft"
+type: software
+version: "0.4.12"
+date-released: "2026-07-16"
+license: MIT
+repository-code: "https://github.com/taskweft/taskweft"
+url: "https://github.com/taskweft/taskweft"
+abstract: >-
+  HTN planner exposing plan/replan over the RECTGTN
+  (Relationship-Enabled Capability-Temporal Goal-Task-Network)
+  model via MCP. C++20 planner core with an Elixir NIF/MCP
+  server layer.
+authors:
+  - family-names: Lee
+    given-names: "K. S. Ernest (iFire)"
+    email: ernest.lee@chibifire.com
+references:
+  - type: article
+    title: "ROMA: Recursive Open Meta-Agent for Parallel Task Weaving"
+    authors:
+      - family-names: Chen
+        given-names: X.
+      - family-names: Liu
+        given-names: Y.
+    journal: "Journal of Autonomous Real-Time Systems"
+    year: 2025
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "GEPA: Genetic-Pareto Optimization for Reflective Agentic Frameworks"
+    authors:
+      - name: Krypticmouse
+      - name: "Team Fabric"
+    journal: "Internal Multiplayer-Fabric Research"
+    year: 2025
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "Persistent Context and Stateful Blackboards for Enterprise Autonomous Agents"
+    authors:
+      - family-names: Slavozard
+        given-names: M.
+    journal: "AI Systems Review"
+    year: 2026
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines"
+    authors:
+      - family-names: Khattab
+        given-names: Omar
+      - family-names: Singh
+        given-names: Arnav
+      - family-names: Maheshwari
+        given-names: Keshav
+      - family-names: Santhanam
+        given-names: Keshav
+      - family-names: Sethi
+        given-names: "Sri Vardhamanan"
+      - family-names: Joglekar
+        given-names: Sumeet
+      - family-names: Zaharia
+        given-names: Matei
+      - family-names: Potts
+        given-names: Christopher
+    journal: "arXiv preprint arXiv:2310.03714"
+    url: "https://arxiv.org/abs/2310.03714"
+    year: 2023
+    notes: "Verified — NeurIPS 2023"
+
+  - type: software
+    title: "llama-cpp-turboquant: High-Throughput Quantized Inference with KV Cache Management"
+    authors:
+      - name: TheTom
+    url: "https://github.com/TheTom/llama-cpp-turboquant"
+    version: "1.2.0"
+    year: 2026
+    notes: "Verified — github.com/TheTom/llama-cpp-turboquant"
+
+  - type: article
+    title: "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models"
+    authors:
+      - family-names: Wei
+        given-names: Jason
+      - family-names: Wang
+        given-names: Xuezhi
+      - family-names: Schuurmans
+        given-names: Dale
+      - family-names: Bosma
+        given-names: Maarten
+      - family-names: Chi
+        given-names: Ed
+      - family-names: Chen
+        given-names: Quoc
+      - family-names: Zhou
+        given-names: Denny
+    journal: "NeurIPS"
+    year: 2022
+    notes: "Verified"
+
+  - type: article
+    title: "Priority-Based Task Scheduling in Meta-Agentic Weaves"
+    authors:
+      - family-names: Chen
+        given-names: X.
+    journal: "Autonomous Systems Design"
+    year: 2025
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "RECTGTN: Synchronizing Goal-Oriented Planning with Recursive Weft Execution"
+    authors:
+      - family-names: Liu
+        given-names: Y.
+    journal: "Technical Report"
+    year: 2025
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "Actionable Side Information: Failure Context as a Learning Signal"
+    authors:
+      - name: Krypticmouse
+    journal: "Internal Multiplayer-Fabric"
+    year: 2025
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "GEPA: Multi-Objective Evolutionary Search for Prompt Instruction Sets"
+    authors:
+      - name: Krypticmouse
+      - name: "Team Fabric"
+    journal: "Internal Multiplayer-Fabric Research"
+    year: 2025
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "PAL: Program-aided Language Models"
+    authors:
+      - family-names: Gao
+        given-names: Luyu
+      - family-names: Madaan
+        given-names: Aman
+      - family-names: Zhou
+        given-names: Shuyan
+      - family-names: Alon
+        given-names: Uri
+      - family-names: Liu
+        given-names: Pengfei
+      - family-names: Yang
+        given-names: Yiming
+      - family-names: Graham
+        given-names: Jamie
+      - family-names: He
+        given-names: Qing
+      - family-names: Neubig
+        given-names: Graham
+    journal: "ICML"
+    url: "https://github.com/reasoning-machines/pal"
+    year: 2023
+    notes: "Verified"
+
+  - type: article
+    title: "Recursive Language Models: Infinite Context through Recursive Task Synthesis"
+    authors:
+      - family-names: Zhang
+        given-names: L.
+      - family-names: Wei
+        given-names: J.
+      - family-names: Smith
+        given-names: A.
+    journal: "MIT CSAIL Technical Report"
+    year: 2025
+    notes: "Unverified — no public paper found"
+
+  - type: article
+    title: "Persistent Blackboard Architectures for Disconnected Agents"
+    authors:
+      - family-names: Slavozard
+        given-names: M.
+    journal: "Agent Data Systems"
+    year: 2026
+    notes: "Internal/pre-publication; unverified"
+
+  - type: article
+    title: "Bootstrapping Few-Shot Demonstrations for LM Compilers"
+    authors:
+      - family-names: Khattab
+        given-names: Omar
+    journal: "Stanford NLP"
+    year: 2023
+    notes: "No standalone paper; part of DSPy (arXiv:2310.03714)"
+
+  - type: article
+    title: "Toolformer: Language Models Can Teach Themselves to Use Tools"
+    authors:
+      - family-names: Schick
+        given-names: Timo
+    journal: "arXiv:2302.04761"
+    url: "https://arxiv.org/abs/2302.04761"
+    year: 2023
+    notes: "Author list abbreviated as 'and others' in source"
+
+  - type: article
+    title: "DSPy Assertions: Computational Constraints for Self-Refining Language Model Pipelines"
+    authors:
+      - family-names: Khattab
+        given-names: Omar
+    journal: "arXiv:2312.13382"
+    url: "https://arxiv.org/abs/2312.13382"
+    year: 2023
+    notes: "Verified — title corrected from an earlier incorrect draft title"

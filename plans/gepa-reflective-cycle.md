@@ -3,6 +3,9 @@
 Implementation plan for integrating DSPy-inspired self-optimizing agent primitives into
 the multiplayer-fabric-taskweft C++/Elixir NIF layer, ordered by Pareto score.
 
+Full bibliography, including verification status per reference, lives in the
+project's [`CITATION.cff`](../CITATION.cff).
+
 ---
 
 ## Components
@@ -12,14 +15,7 @@ the multiplayer-fabric-taskweft C++/Elixir NIF layer, ordered by Pareto score.
 Core engine feature: multiple tasks yield and resume across frames without blocking the
 main engine thread. Enables parallel dependency-aware execution.
 
-```bibtex
-@article{roma2025openmeta,
-  title={ROMA: Recursive Open Meta-Agent for Parallel Task Weaving},
-  author={Chen, X. and Liu, Y.},
-  journal={Journal of Autonomous Real-Time Systems},
-  year={2025}
-}
-```
+Reference: "ROMA: Recursive Open Meta-Agent for Parallel Task Weaving" (Chen & Liu, 2025)
 
 ---
 
@@ -29,14 +25,8 @@ Architectural core for disconnected learning. Monitors task execution and trigge
 automated self-critique. Replaces traditional RL with language-based feedback loops;
 primary driver for local agent adaptation.
 
-```bibtex
-@article{gepa2025reflective,
-  title={GEPA: Genetic-Pareto Optimization for Reflective Agentic Frameworks},
-  author={Krypticmouse and Team Fabric},
-  journal={Internal Multiplayer-Fabric Research},
-  year={2025}
-}
-```
+Reference: "GEPA: Genetic-Pareto Optimization for Reflective Agentic Frameworks"
+(Krypticmouse & Team Fabric, 2025)
 
 ---
 
@@ -45,14 +35,8 @@ primary driver for local agent adaptation.
 Thread-safe key-value store for RECTGTN planner to share state between tasks. Manages
 trade-off between ephemeral task state and persistent agent context.
 
-```bibtex
-@article{slavozard2026persistent,
-  title={Persistent Context and Stateful Blackboards for Enterprise Autonomous Agents},
-  author={Slavozard, M.},
-  journal={AI Systems Review},
-  year={2026}
-}
-```
+Reference: "Persistent Context and Stateful Blackboards for Enterprise Autonomous Agents"
+(Slavozard, 2026)
 
 ---
 
@@ -62,17 +46,8 @@ Implement as strict C++ structs or Godot `.tres` Resources defining inputs and o
 Ensures compile-time safety and zero runtime parsing overhead. Shifts from "vibe-based"
 prompting to type-safe interface contracts; required for RECTGTN planner validation.
 
-```bibtex
-@article{khattab2023dspy,
-  title={DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines},
-  author={Khattab, Omar and Singh, Arnav and Maheshwari, Keshav and Santhanam, Keshav
-          and Sethi, Sri Vardhamanan and Joglekar, Sumeet and Zaharia, Matei
-          and Potts, Christopher},
-  journal={arXiv preprint arXiv:2310.03714},
-  url={https://arxiv.org/abs/2310.03714},
-  year={2023}
-}
-```
+Reference: "DSPy: Compiling Declarative Language Model Calls into Self-Improving
+Pipelines" (Khattab et al., 2023, arXiv:2310.03714)
 
 ---
 
@@ -81,15 +56,8 @@ prompting to type-safe interface contracts; required for RECTGTN planner validat
 Explicitly manage and hot-swap compressed KV caches between agent task-switches.
 Critical for context folding; prevents cold-start latency when switching behavioral modes.
 
-```bibtex
-@software{llama_turboquant2026,
-  author={TheTom},
-  title={llama-cpp-turboquant: High-Throughput Quantized Inference with KV Cache Management},
-  url={https://github.com/TheTom/llama-cpp-turboquant},
-  version={1.2.0},
-  year={2026}
-}
-```
+Reference: "llama-cpp-turboquant: High-Throughput Quantized Inference with KV Cache
+Management" (TheTom, v1.2.0, 2026)
 
 ---
 
@@ -99,16 +67,8 @@ Port basic forward-pass logic natively to C++ as asynchronous task nodes interfa
 directly with llama-cpp-turboquant. Implements "Thinking Trajectories" using
 high-throughput 3-bit/4-bit KV compression to minimize VR latency.
 
-```bibtex
-@article{wei2022chain,
-  title={Chain-of-Thought Prompting Elicits Reasoning in Large Language Models},
-  author={Wei, Jason and Wang, Xuezhi and Schuurmans, Dale and Bosma, Maarten
-          and Chi, Ed and Chen, Quoc and Zhou, Denny},
-  journal={NeurIPS},
-  year={2022}
-}
-% runtime: see llama_turboquant2026
-```
+Reference: "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models"
+(Wei et al., NeurIPS 2022); runtime: see the `llama-cpp-turboquant` reference above.
 
 ---
 
@@ -118,14 +78,7 @@ Specialized scheduler prioritizing "Reactive" tasks over "Reflective" tasks. Pre
 "Consequence Engines" (high-level reasoning) from starving time-critical physical
 actuators.
 
-```bibtex
-@article{roma2025scheduling,
-  title={Priority-Based Task Scheduling in Meta-Agentic Weaves},
-  author={Chen, X.},
-  journal={Autonomous Systems Design},
-  year={2025}
-}
-```
+Reference: "Priority-Based Task Scheduling in Meta-Agentic Weaves" (Chen, 2025)
 
 ---
 
@@ -134,9 +87,7 @@ actuators.
 Low-latency parser triggering engine actions as the first tokens arrive. Essential for
 VR "Presence"; minimizes the "uncanny valley" of agent reaction delays.
 
-```bibtex
-% see llama_turboquant2026
-```
+Reference: see the `llama-cpp-turboquant` reference above.
 
 ---
 
@@ -145,14 +96,8 @@ VR "Presence"; minimizes the "uncanny valley" of agent reaction delays.
 Explicitly serialize and store "Actionable Side Information" generated by failures.
 Preserves failure context to allow optimization during background idle cycles.
 
-```bibtex
-@article{gepa2025asi,
-  title={Actionable Side Information: Failure Context as a Learning Signal},
-  author={Krypticmouse},
-  journal={Internal Multiplayer-Fabric},
-  year={2025}
-}
-```
+Reference: "Actionable Side Information: Failure Context as a Learning Signal"
+(Krypticmouse, 2025)
 
 ---
 
@@ -162,14 +107,8 @@ Implement Genetic-Pareto loop as a decoupled background process. Evolves instruc
 using a Pareto-frontier. Background evolutionary search to maintain optimal prompt
 candidates across multiple performance metrics.
 
-```bibtex
-@article{gepa2025reflective_v2,
-  title={GEPA: Multi-Objective Evolutionary Search for Prompt Instruction Sets},
-  author={Krypticmouse and Team Fabric},
-  journal={Internal Multiplayer-Fabric Research},
-  year={2025}
-}
-```
+Reference: "GEPA: Multi-Objective Evolutionary Search for Prompt Instruction Sets"
+(Krypticmouse & Team Fabric, 2025)
 
 ---
 
@@ -179,16 +118,7 @@ Specialized module where agent outputs executable code instead of text. Bridges
 stochastic logic with deterministic engine math; verified reasoning via local code
 execution.
 
-```bibtex
-@article{gao2023pot,
-  title={PAL: Program-aided Language Models},
-  author={Gao, Luyu and Madaan, Aman and Zhou, Shuyan and Alon, Uri and Liu, Pengfei
-          and Yang, Yiming and Graham, Jamie and He, Qing and Neubig, Graham},
-  journal={ICML},
-  url={https://github.com/reasoning-machines/pal},
-  year={2023}
-}
-```
+Reference: "PAL: Program-aided Language Models" (Gao et al., ICML 2023)
 
 ---
 
@@ -197,14 +127,8 @@ execution.
 Enable agents to spawn sub-tasks recursively. Allows agents to act as active readers
 of their own large memory buffers, achieving "pseudo-infinite" context.
 
-```bibtex
-@article{zhang2025rlm,
-  title={Recursive Language Models: Infinite Context through Recursive Task Synthesis},
-  author={Zhang, L. and Wei, J. and Smith, A.},
-  journal={MIT CSAIL Technical Report},
-  year={2025}
-}
-```
+Reference: "Recursive Language Models: Infinite Context through Recursive Task
+Synthesis" (Zhang, Wei & Smith, 2025 — unverified, no public paper found)
 
 ---
 
@@ -213,14 +137,8 @@ of their own large memory buffers, achieving "pseudo-infinite" context.
 Serialize stateful blackboard to local storage. Provides agent continuity across separate
 user sessions and world-state reloads.
 
-```bibtex
-@article{slavozard2026sqlite,
-  title={Persistent Blackboard Architectures for Disconnected Agents},
-  author={Slavozard, M.},
-  journal={Agent Data Systems},
-  year={2026}
-}
-```
+Reference: "Persistent Blackboard Architectures for Disconnected Agents"
+(Slavozard, 2026)
 
 ---
 
@@ -230,16 +148,7 @@ Cache and inject successful "traces" into prompts. Core stabilization primitive 
 maintaining consistent behavioral patterns in small models.
 
 Note: `BootstrapFewShot` is an optimizer within DSPy (arXiv:2310.03714), not a separate
-paper; see `khattab2023dspy`.
-
-```bibtex
-@article{khattab2023bootstrap,
-  title={Bootstrapping Few-Shot Demonstrations for LM Compilers},
-  author={Khattab, Omar},
-  journal={Stanford NLP},
-  year={2023}
-}
-```
+paper — see the DSPy reference under Signatures above.
 
 ---
 
@@ -248,33 +157,5 @@ paper; see `khattab2023dspy`.
 Declarative constraints (e.g., `Assert(target_in_sight)`) that trigger backtracking.
 Integrated self-correction to minimize hallucination rates during engine tool interaction.
 
-Note: original title "LM Assertions: Generating and Verifying..." is incorrect; actual
-paper is "DSPy Assertions: Computational Constraints for Self-Refining Language Model
-Pipelines" (arXiv:2312.13382).
-
-```bibtex
-@article{khattab2023assertions,
-  title={DSPy Assertions: Computational Constraints for Self-Refining Language Model Pipelines},
-  author={Khattab, Omar and others},
-  journal={arXiv:2312.13382},
-  url={https://arxiv.org/abs/2312.13382},
-  year={2023}
-}
-```
-
----
-
-## Citation Notes
-
-| BibTeX key | Status |
-|---|---|
-| `khattab2023dspy` | Verified — NeurIPS 2023, arXiv:2310.03714 |
-| `wei2022chain` | Verified — NeurIPS 2022 |
-| `gao2023pot` | Verified — ICML 2023 |
-| `khattab2023assertions` | Verified — arXiv:2312.13382; title corrected from original |
-| `llama_turboquant2026` | Verified — github.com/TheTom/llama-cpp-turboquant |
-| `khattab2023bootstrap` | No standalone paper; part of DSPy (arXiv:2310.03714) |
-| `gepa2025reflective`, `gepa2025reflective_v2`, `gepa2025asi` | Internal Multiplayer-Fabric research |
-| `slavozard2026persistent`, `slavozard2026sqlite` | Internal/pre-publication |
-| `roma2025openmeta`, `roma2025scheduling` | Internal/pre-publication |
-| `zhang2025rlm` | Unverified — no public paper found |
+Reference: "DSPy Assertions: Computational Constraints for Self-Refining Language Model
+Pipelines" (Khattab et al., 2023, arXiv:2312.13382)
