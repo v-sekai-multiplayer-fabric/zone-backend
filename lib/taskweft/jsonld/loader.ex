@@ -71,13 +71,16 @@ defmodule Taskweft.JSONLD.Loader do
   Structural shape rules are enforced by a single JSON Schema
   (`priv/schemas/rectgtn_domain.schema.json`) — one declarative source of
   truth. The remaining checks are cross-referencing rules a document-shape
-  schema can't express: action/method call arity, `{param}` substitution
-  references, and ISO 8601 duration grammar (its own dedicated,
-  property-tested parser).
+  schema can't express: whether a `domain:Definition` declares at least one
+  action or method (an empty/near-empty `{}` domain is otherwise schema-valid
+  but unsolvable and previously reached the NIF as an opaque failure), action/
+  method call arity, `{param}` substitution references, and ISO 8601
+  duration grammar (its own dedicated, property-tested parser).
   """
   @spec validate(map(), map()) :: :ok | {:error, String.t()}
   def validate(doc, _ctx) when is_map(doc) do
     with :ok <- check_json_schema(doc),
+         :ok <- check_has_actions(doc),
          :ok <- check_arity(doc),
          :ok <- check_action_durations(doc),
          :ok <- check_var_refs(doc) do
@@ -139,6 +142,29 @@ defmodule Taskweft.JSONLD.Loader do
         {:error, "schema validation failed: #{msg}"}
     end
   end
+
+  # A `domain:Definition` with neither actions nor methods is never
+  # solvable — every `todo_list` entry bottoms out at an action, reached
+  # either directly or through a method — so a caller mistake like an
+  # unpopulated `{}` domain is otherwise schema-valid but useless. Methods
+  # alone are accepted (a domain fragment that composes actions declared
+  # elsewhere, e.g. via a later merge) — this only rejects the case where
+  # neither is present at all. `domain:Problem` documents are exempt: they
+  # carry state/todo_list only and inherit actions/methods from the domain
+  # they're merged with.
+  defp check_has_actions(%{"@type" => "domain:Definition"} = doc) do
+    if non_empty_map?(doc["actions"]) or non_empty_map?(doc["methods"]) do
+      :ok
+    else
+      {:error,
+       "domain:Definition documents must declare at least one action or method (\"actions\"/\"methods\" is missing or empty)"}
+    end
+  end
+
+  defp check_has_actions(_doc), do: :ok
+
+  defp non_empty_map?(m) when is_map(m), do: map_size(m) > 0
+  defp non_empty_map?(_), do: false
 
   # Per-action `duration` (RECTGTN 'T') feeds the temporal/STN block; unlike
   # capabilities this has a concrete grammar (ISO 8601), so a malformed value

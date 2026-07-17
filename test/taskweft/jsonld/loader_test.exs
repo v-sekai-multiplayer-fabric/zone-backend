@@ -212,6 +212,44 @@ defmodule Taskweft.JSONLD.LoaderTest do
     end
   end
 
+  describe "validate/2 domain:Definition requires at least one action or method" do
+    defp def_base(extra), do: Map.merge(%{"@type" => "domain:Definition", "name" => "d"}, extra)
+
+    test "rejects an empty document (no @type/name/actions at all)" do
+      assert {:error, _msg} = Loader.validate(%{}, %{})
+    end
+
+    test "rejects a domain:Definition with neither actions nor methods" do
+      assert {:error, msg} = Loader.validate(def_base(%{}), %{})
+      assert msg =~ "must declare at least one action or method"
+    end
+
+    test "rejects a domain:Definition with an empty actions object and no methods" do
+      assert {:error, msg} = Loader.validate(def_base(%{"actions" => %{}}), %{})
+      assert msg =~ "must declare at least one action or method"
+    end
+
+    test "accepts a domain:Definition with at least one action" do
+      doc = def_base(%{"actions" => %{"do_a" => %{"params" => [], "body" => []}}})
+      assert :ok = Loader.validate(doc, %{})
+    end
+
+    test "accepts a domain:Definition with methods but no actions of its own" do
+      doc =
+        def_base(%{
+          "methods" => %{
+            "m1" => %{"params" => [], "alternatives" => [%{"name" => "only", "subtasks" => []}]}
+          }
+        })
+
+      assert :ok = Loader.validate(doc, %{})
+    end
+
+    test "a domain:Problem is not required to declare actions" do
+      assert :ok = Loader.validate(base(%{}), %{})
+    end
+  end
+
   describe "load_string end-to-end (context resolution + validate)" do
     test "a multigoal problem document round-trips" do
       json = ~s({
