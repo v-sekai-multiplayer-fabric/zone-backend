@@ -58,6 +58,12 @@ defmodule Taskweft.MixProject do
   # builds the per-triplet binaries with the toolchain installed.
   defp releases do
     [
+      # Hosted MCP web server (Fly.io production) — folded in from the
+      # formerly-separate deploy/ Mix project; see Taskweft.Application.
+      taskweft_deploy: [
+        version: @version,
+        include_executables_for: [:unix]
+      ],
       taskweft: [
         version: @version,
         steps: [:assemble, &Taskweft.Release.wrap/1],
@@ -125,9 +131,15 @@ defmodule Taskweft.MixProject do
       {:taskweft_nif, "~> 0.2.0-dev"},
       {:taskweft_rebac, "~> 0.2.0-dev"},
       {:taskweft_mcp_client, "~> 0.2.0-dev"},
-      {:taskweft_mcp, "~> 0.3.0-dev"},
       {:ex_mcp, "~> 1.0.0-rc"},
       {:burrito, "~> 1.5"},
+      # Hosted MCP web server (Fly.io production) — folded in from the
+      # formerly-separate deploy/ Mix project. oauth_mcp_bridge is the
+      # generic OAuth-to-MCP bridge (macaroons, GitHub OAuth, MCP bearer
+      # guard) — deliberately stays its own repo/Hex package; it's genuinely
+      # reusable and not taskweft-specific.
+      {:oauth_mcp_bridge, "~> 0.1.0-dev"},
+      {:plug_cowboy, "~> 2.7"},
       {:json_ld, "~> 1.0"},
       {:rdf, "~> 3.0"},
       {:jason, "~> 1.4"},

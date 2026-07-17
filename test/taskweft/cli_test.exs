@@ -6,8 +6,8 @@ defmodule Taskweft.CLITest do
 
   alias Taskweft.CLI
 
-  @domains Path.join(:code.priv_dir(:taskweft_plans), "plans/domains")
-  @problems Path.join(:code.priv_dir(:taskweft_plans), "plans/problems")
+  @domains Path.join(:code.priv_dir(:taskweft), "plans/domains")
+  @problems Path.join(:code.priv_dir(:taskweft), "plans/problems")
 
   defp domain(name), do: Path.join(@domains, name)
   defp problem(name), do: Path.join(@problems, name)
@@ -33,23 +33,23 @@ defmodule Taskweft.CLITest do
   end
 
   describe "mcp option parsing" do
-    test "bare mcp is stdio" do
+    test "bare mcp has no port/host set (server.ex applies its own defaults)" do
       assert {:mcp, opts} = CLI.run(["mcp"])
-      assert opts[:transport] == :stdio
+      assert opts[:port] == nil
+      assert opts[:host] == nil
     end
 
-    test "--http switches transport" do
+    test "--http is accepted as a no-op (HTTP is the only transport)" do
       assert {:mcp, opts} = CLI.run(["mcp", "--http"])
-      assert opts[:transport] == :http
+      assert opts == []
     end
 
-    test "--port implies http and parses the integer" do
+    test "--port parses the integer" do
       assert {:mcp, opts} = CLI.run(["mcp", "--port", "8080"])
-      assert opts[:transport] == :http
       assert opts[:port] == 8080
     end
 
-    test "--host implies http" do
+    test "--host is accepted" do
       assert {:mcp, opts} = CLI.run(["mcp", "--http", "--host", "0.0.0.0"])
       assert opts[:host] == "0.0.0.0"
     end

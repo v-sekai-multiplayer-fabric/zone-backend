@@ -1,0 +1,58 @@
+{
+  "scope": "Shared MMOG fabric beneath multiplayer-fabric-xr-dev (VR) and multiplayer-fabric-rpg (RPG): engine assembly, zone networking, and interest management.",
+  "win_condition": "All four TUI scenarios (concert, chokepoint, convoy, ragdoll) complete with 16 mires visible in zone_console, 20 Hz tick maintained throughout, and zero entity loss — all in a terminal. No VR headset, no GPU, no Godot window required.",
+  "stack": {
+    "engine_assembly": "multiplayer-fabric-merge — gitassembly → multiplayer-fabric branch",
+    "godot_fork": "multiplayer-fabric-godot — branch multiplayer-fabric",
+    "build_system": "multiplayer-fabric-build — SCons, Justfile",
+    "zone_server": "multiplayer-fabric-humanoid-project — headless Godot running mire.tscn; 20 Hz constant-work loop; 100-byte entity snapshots",
+    "zone_registry": "multiplayer-fabric-zone-backend — Elixir/Phoenix, WebTransport/HTTP3",
+    "interest_management": "multiplayer-fabric-predictive-bvh — Lean-verified BVH",
+    "bots": "taskweft/picoquic — C++20, HTN planner, ~15 MB each; not full Godot processes",
+    "observer": "multiplayer-fabric-zone-console — ratatui TUI, WebTransport observer"
+  },
+  "resource_budget": {
+    "hardware": "M2 Pro, 12 cores, 32 GB",
+    "zone_backend": "1 core",
+    "zone_server": "1 core",
+    "os_headroom": "1 core",
+    "bots_16x": "~240 MB RAM, 9 cores shared"
+  },
+  "pass_conditions": {
+    "engine_boot": "godot --headless --quit-after 300 exits 0; no SCRIPT ERROR",
+    "vrm_visible": "VRM character loads in mire.tscn; MToon shader and humanoid skeleton work",
+    "character_steps": "Basic rigid-body plane collision and input routing functional",
+    "zone_connect": "WebTransport HTTP/3 handshake succeeds between client and zone-backend",
+    "all_mires": "Zone server logs 16 registered players in each scenario",
+    "entity_slots": "896 occupied (16 × 56); zone never exceeds 1800",
+    "tick_rate": "20 Hz held; tick=50ms in TUI status bar for all 4 scenarios",
+    "clean_shutdown": "FabricSnapshot written after each scenario; positions recoverable",
+    "lasso_query_returns_poi": "VR lasso query returns a non-null POI when the test scene is live",
+    "call_gui_input_fires": "call_gui_input routing fires for synthesized Control input events",
+    "btn_pressed_fires": "btn_pressed signal fires through call_gui_input routing",
+    "virtual_input_fires": "virtual_input also fires via call_gui_input path",
+    "slider_value_changes": "Slider value emits value_changed via call_gui_input routing"
+  },
+  "scenarios": {
+    "concert": {
+      "lean": "separatedConcertFits / naiveConcertFits — Interest/AuthorityInterest.lean",
+      "description": "All 16 bots converge to the same zone area. Local players fill authority budget; remote players fill interest/replica budget. Proves lo + re ≤ (cap − headroom) + InterestCapacity.",
+      "pass": "separatedConcertFits 16 0 1800 400 holds; interest-set snapshot = 896 slots"
+    },
+    "chokepoint": {
+      "lean": "currentFunnelPeakVUmTick = 60 m/s, c7_current_funnel_exceeds_cap, c7_funnel_mitigation_ge — Spatial/ScaleContradictions.lean",
+      "description": "Bots rush through a narrow corridor, reaching speeds above vMaxPhysical (10 m/s) due to crowd pressure. Zone server registers funnel segment with per-segment velocity cap.",
+      "pass": "No entity exits BVH ghost bound; funnel velocity override logged; no SCRIPT ERROR"
+    },
+    "convoy": {
+      "lean": "wpPeriodMin / migration_completes_before_phase_flip — Protocol/WaypointBound.lean",
+      "description": "Mover entity leads cabin bots on a periodic route crossing the zone boundary. One full cycle = 2 × wpPeriodMin. STAGING migration completes before phase reversal.",
+      "pass": "All cabin bots complete ≥ 2 zone crossings; wpPeriodValid holds; no cabin lost during STAGING"
+    },
+    "ragdoll": {
+      "lean": "g13_vTrue = 15 m/s, aHalfMinForearm (C1/C2) — Spatial/ScaleContradictions.lean",
+      "description": "Bots collide head-on at g13_vTrue = 15 m/s (above vMaxPhysical). C1 clamps to vMaxPhysical; C2 uses aHalfMinForearm in ghost bound expansion.",
+      "pass": "Server clamps impulse velocities (C1); ghost bound uses aHalfMinForearm (C2); tick p99 ≤ 2× baseline"
+    }
+  }
+}

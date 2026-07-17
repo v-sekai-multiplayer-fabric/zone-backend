@@ -1,0 +1,76 @@
+{
+  "@context": {
+    "khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
+    "domain": "khr:planning/domain/"
+  },
+  "@type": "domain:Definition",
+  "name": "skill_allocation",
+  "description": "Skill allocation and job assignment planning domain. Assigns service jobs to engineers, optionally training them on required skills to minimize training costs.",
+  "version": "1.0",
+  "variables": [
+    {
+      "name": "engineers",
+      "type": "ref",
+      "description": "Engineer roster with skills and locations"
+    },
+    {
+      "name": "jobs",
+      "type": "ref",
+      "description": "Service jobs with requirements"
+    },
+    {
+      "name": "allocations",
+      "type": "ref",
+      "description": "Job allocations: job_id -> engineer_id"
+    },
+    {
+      "name": "training_used",
+      "type": "int",
+      "description": "Count of skills being trained (objective to minimize)"
+    }
+  ],
+  "actions": {
+    "assign_job": {
+      "params": ["job_id", "engineer_id"],
+      "description": "Assign a job to an engineer"
+    },
+    "train_engineer": {
+      "params": ["engineer_id", "skill_id"],
+      "description": "Train an engineer on a new skill"
+    }
+  },
+  "methods": {
+    "allocate_all_jobs": {
+      "params": [],
+      "description": "Main task: allocate all unassigned jobs to suitable engineers",
+      "alternatives": [
+        {
+          "name": "allocate_one_then_rest",
+          "description": "Allocate one job, then recursively allocate remaining",
+          "subtasks": [["allocate_next_job"], ["allocate_all_jobs"]]
+        },
+        {
+          "name": "all_jobs_done",
+          "description": "All jobs have been allocated (base case)",
+          "subtasks": []
+        }
+      ]
+    },
+    "allocate_next_job": {
+      "params": [],
+      "description": "Find and allocate the next unassigned job",
+      "alternatives": [
+        {
+          "name": "assign_to_qualified",
+          "description": "Assign to engineer who has the skill",
+          "subtasks": []
+        },
+        {
+          "name": "train_and_assign",
+          "description": "Train engineer then assign",
+          "subtasks": []
+        }
+      ]
+    }
+  }
+}

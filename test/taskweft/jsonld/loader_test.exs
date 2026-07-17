@@ -13,7 +13,7 @@ defmodule Taskweft.JSONLD.LoaderTest do
 
   alias Taskweft.JSONLD.Loader
 
-  @plans :code.priv_dir(:taskweft_plans) |> Path.join("plans")
+  @plans :code.priv_dir(:taskweft) |> Path.join("plans")
 
   defp base(extra),
     do: Map.merge(%{"@type" => "domain:Problem", "name" => "t"}, extra)

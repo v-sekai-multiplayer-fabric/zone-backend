@@ -15,7 +15,7 @@ defmodule Taskweft.CLI do
       taskweft plan --problem <domain> <problem>        plan from split domain + problem
       taskweft plan                                     plan from JSON-LD on stdin
       taskweft replan <fail_step> <domain> [problem]    replan after a step failure (JSON)
-      taskweft mcp [--http] [--port N] [--host H]        run the MCP server (stdio / HTTP)
+      taskweft mcp [--port N] [--host H]                 run the MCP server over HTTP
       taskweft version                                   print version + build commit
       taskweft help                                      print this usage
 
@@ -134,15 +134,19 @@ defmodule Taskweft.CLI do
 
   # ---------- mcp ----------
 
-  defp parse_mcp(args), do: parse_mcp(args, transport: :stdio)
+  # HTTP-only — no `taskweft mcp` client spawns this over stdio (the live
+  # deployment and every local MCP client config point at the hosted HTTP
+  # endpoint), so the stdio transport this used to also support was dead
+  # weight. `--http` is still accepted, as a no-op, for existing muscle
+  # memory rather than erroring on it.
+  defp parse_mcp(args), do: parse_mcp(args, [])
 
-  defp parse_mcp(["--http" | rest], opts),
-    do: parse_mcp(rest, Keyword.put(opts, :transport, :http))
+  defp parse_mcp(["--http" | rest], opts), do: parse_mcp(rest, opts)
 
   defp parse_mcp(["--port", value | rest], opts) do
     case Integer.parse(value) do
       {port, ""} ->
-        parse_mcp(rest, opts |> Keyword.put(:transport, :http) |> Keyword.put(:port, port))
+        parse_mcp(rest, Keyword.put(opts, :port, port))
 
       _ ->
         {:error, "taskweft mcp: --port must be an integer, got #{inspect(value)}", 2}
@@ -150,7 +154,7 @@ defmodule Taskweft.CLI do
   end
 
   defp parse_mcp(["--host", value | rest], opts),
-    do: parse_mcp(rest, opts |> Keyword.put(:transport, :http) |> Keyword.put(:host, value))
+    do: parse_mcp(rest, Keyword.put(opts, :host, value))
 
   defp parse_mcp([unknown | _rest], _opts),
     do: {:error, "taskweft mcp: unknown option #{inspect(unknown)}", 2}
@@ -159,23 +163,16 @@ defmodule Taskweft.CLI do
 
   # Blocks forever running the MCP server; only reached from `main/1`.
   defp serve_mcp(opts) do
-    # The MCP stack (ex_mcp's Horde ServiceRegistry, SessionManager, the
-    # reliability supervisor) is marked `:load` in the release and started
-    # here, lazily, only for the `mcp` subcommand.
-    {:ok, _} = Application.ensure_all_started(:taskweft_mcp)
+    # `ex_mcp` (Horde ServiceRegistry, SessionManager, the reliability
+    # supervisor) is marked `:load` in the release and started here, lazily,
+    # only for the `mcp` subcommand.
+    {:ok, _} = Application.ensure_all_started(:ex_mcp)
 
-    server_opts =
-      case Keyword.get(opts, :transport, :stdio) do
-        :stdio ->
-          [transport: :stdio]
-
-        :http ->
-          [
-            transport: :http,
-            port: Keyword.get(opts, :port, 4000),
-            host: Keyword.get(opts, :host, "localhost")
-          ]
-      end
+    server_opts = [
+      transport: :http,
+      port: Keyword.get(opts, :port, 4000),
+      host: Keyword.get(opts, :host, "localhost")
+    ]
 
     {:ok, _server} = Taskweft.MCP.Server.start_link(server_opts)
     Process.sleep(:infinity)
@@ -293,8 +290,7 @@ defmodule Taskweft.CLI do
       taskweft plan --problem <domain> <problem>     plan from split domain + problem
       taskweft plan                                  plan from JSON-LD on stdin
       taskweft replan <fail_step> <domain> [problem] replan after a step failure (JSON)
-      taskweft mcp                                   run the MCP server over stdio
-      taskweft mcp --http [--port N] [--host H]      run the MCP server over HTTP
+      taskweft mcp [--port N] [--host H]             run the MCP server over HTTP
       taskweft version                               print version + build commit
       taskweft help                                  print this help
 

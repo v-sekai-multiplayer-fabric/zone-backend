@@ -57,7 +57,11 @@ defmodule TaskweftDeploy.Router do
   end
 
   get "/health" do
-    send_json(conn, 200, %{"status" => "ok", "version" => @taskweft_version, "git_sha" => @git_sha})
+    send_json(conn, 200, %{
+      "status" => "ok",
+      "version" => @taskweft_version,
+      "git_sha" => @git_sha
+    })
   end
 
   get "/.well-known/oauth-protected-resource" do
@@ -74,8 +78,11 @@ defmodule TaskweftDeploy.Router do
          {:ok, registration} <- OAuth.register_client(req) do
       send_json(conn, 201, registration)
     else
-      {:error, reason} -> send_json(conn, 400, %{"error" => "invalid_client_metadata", "detail" => inspect(reason)})
-      _ -> send_json(conn, 400, %{"error" => "invalid_client_metadata"})
+      {:error, reason} ->
+        send_json(conn, 400, %{"error" => "invalid_client_metadata", "detail" => inspect(reason)})
+
+      _ ->
+        send_json(conn, 400, %{"error" => "invalid_client_metadata"})
     end
   end
 
@@ -129,7 +136,9 @@ defmodule TaskweftDeploy.Router do
 
   defp public_path?(conn) do
     p = conn.request_path
-    p == "/" or p == "/health" or String.starts_with?(p, "/.well-known/") or String.starts_with?(p, "/oauth/")
+
+    p == "/" or p == "/health" or String.starts_with?(p, "/.well-known/") or
+      String.starts_with?(p, "/oauth/")
   end
 
   # ── helpers ─────────────────────────────────────────────────────────────────
@@ -145,5 +154,4 @@ defmodule TaskweftDeploy.Router do
     |> put_resp_header("location", url)
     |> send_resp(302, "")
   end
-
 end

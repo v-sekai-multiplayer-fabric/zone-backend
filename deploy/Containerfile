@@ -3,10 +3,15 @@
 # Stage 1 compiles the C++ NIF + an Elixir prod release (which excludes
 # test-only deps like timex/tzdata/hackney/cowlib). Stage 2 is a slim runtime.
 #
-# Build context is the taskweft monorepo ROOT (not deploy/) — taskweft_deploy
-# depends on taskweft via a path dep ({:taskweft, path: ".."}), so both the
-# parent app's source and deploy/'s own source need to be present at their
-# real relative on-disk layout for Mix to resolve it.
+# Build context is the taskweft monorepo root. The `taskweft_deploy` release
+# target (mix.exs) and its hosted-server source (lib/taskweft_deploy/) were
+# folded directly into this app -- previously a separate deploy/ Mix project
+# with its own mix.exs/mix.lock, resolved independently from the root
+# app's own lock. That split let the two lockfiles desync (a taskweft_mcp
+# dependency bump landing in the root lock without the matching bump ever
+# reaching deploy/mix.lock, so production kept running a stale version
+# despite every surface-level deploy signal looking fine) -- one Mix
+# project, one mix.lock, removes that whole class of bug.
 
 ARG ELIXIR_IMAGE=docker.io/hexpm/elixir:1.17.3-erlang-27.2-debian-bookworm-20241202-slim
 ARG RUNTIME_IMAGE=docker.io/debian:bookworm-slim
@@ -29,20 +34,8 @@ RUN curl -fsSL -o /usr/local/bin/rebar3 https://github.com/erlang/rebar3/release
   && chmod +x /usr/local/bin/rebar3 \
   && mix local.rebar rebar3 /usr/local/bin/rebar3 --force
 
-# taskweft (the path-dep parent) — mix.exs + lib, and priv (some modules
-# embed bundled static data at compile time via @external_resource +
-# File.read!, e.g. lib/taskweft/jsonld/loader.ex's JSON Schema — that read
-# happens during `mix compile` below, so priv/ must exist in this build
-# stage even though the resulting release doesn't need its own runtime copy
-# of that specific file, since the content is baked into the .beam).
-# Mix resolves the path dep's own deps from its mix.exs, not a separate lock.
 WORKDIR /app
-COPY mix.exs ./
-COPY lib lib
-COPY priv priv
-
-WORKDIR /app/deploy
-COPY deploy/mix.exs deploy/mix.lock* ./
+COPY mix.exs mix.lock ./
 RUN mix deps.get --only prod
 RUN mix deps.compile
 
@@ -52,10 +45,11 @@ RUN mix deps.compile
 ARG GIT_SHA=unknown
 ENV GIT_SHA=${GIT_SHA}
 
-COPY deploy/config config
-COPY deploy/lib lib
+COPY config config
+COPY lib lib
+COPY priv priv
 RUN mix compile
-RUN mix release
+RUN mix release taskweft_deploy
 
 # ---------- runtime ----------
 FROM ${RUNTIME_IMAGE} AS app
@@ -69,7 +63,7 @@ ENV MIX_ENV=prod \
     LANG=C.UTF-8
 
 WORKDIR /app
-COPY --from=build /app/deploy/_build/prod/rel/taskweft_deploy ./
+COPY --from=build /app/_build/prod/rel/taskweft_deploy ./
 
 # Non-root
 RUN useradd --create-home app && chown -R app:app /app

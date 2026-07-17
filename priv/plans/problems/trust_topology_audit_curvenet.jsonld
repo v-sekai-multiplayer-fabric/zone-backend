@@ -1,0 +1,36 @@
+{
+  "@context": {
+    "khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
+    "domain": "khr:planning/domain/"
+  },
+  "@type": "domain:Problem",
+  "name": "trust_topology_audit_curvenet",
+  "source": "trust_topology_audit",
+  "description": "Apply the trust_topology_audit domain to the V-Sekai-fire/TOOL_godot_curvenet project. Identifies the existing gates (Lean native_decide proofs across 23 modules; RapidCheck property tests across 13 binaries; lake build; scons -j8 build; manual editor verification on Mire), then walks the four diagnostic properties: overlap ratio (Lean vs RC redundancy), verification amplification (Lean → C++ → tests → editor chain), deterministic ceiling (provable proofs vs manual UX judgement vs unobservable artist intent), and the liveness constraint (current gate budget vs throughput). Synthesises recommendations such as adding a real-rig deformation-quality gate that runs the full deformer on Mire and an explicit oracle-routing path for hard-failure escalation. Final artifact is a docs/AUDIT_TRUST_TOPOLOGY.md narrative committed to the project tree.",
+  "variables": [
+    {
+      "name": "sections_drafted",
+      "type": "bool",
+      "init": {
+        "gate_inventory": false,
+        "overlap_ratio": false,
+        "verification_amplification": false,
+        "deterministic_ceiling": false,
+        "liveness_constraint": false,
+        "synthesis_recommendations": false
+      }
+    },
+    {
+      "name": "audit_published",
+      "type": "bool",
+      "init": {
+        "doc_committed": false
+      }
+    }
+  ],
+  "todo_list": [
+    [
+      "write_trust_topology_audit"
+    ]
+  ]
+}
