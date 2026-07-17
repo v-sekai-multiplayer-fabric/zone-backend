@@ -13,7 +13,14 @@
 # despite every surface-level deploy signal looking fine) -- one Mix
 # project, one mix.lock, removes that whole class of bug.
 
-ARG ELIXIR_IMAGE=docker.io/hexpm/elixir:1.17.3-erlang-27.2-debian-bookworm-20241202-slim
+# 1.18.x is the floor mix.exs actually requires (elixir: "~> 1.18", set when
+# deploy/ was folded into this app -- deploy/mix.exs used to pin its own,
+# looser "~> 1.17" requirement independently, so this stale 1.17.3 base image
+# went unnoticed until the fold-in made the two Elixir requirements collide).
+# hexpm's published images don't pair 1.18.x with erlang-28 (unlike
+# erlef/setup-beam in CI, which does) -- 27.3.4.14 is 1.18.4's newest
+# available erlang-27 pairing.
+ARG ELIXIR_IMAGE=docker.io/hexpm/elixir:1.18.4-erlang-27.3.4.14-debian-bookworm-20260713-slim
 ARG RUNTIME_IMAGE=docker.io/debian:bookworm-slim
 
 # ---------- build ----------

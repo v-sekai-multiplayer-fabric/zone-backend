@@ -33,10 +33,15 @@ defmodule TaskweftDeploy.Router do
 
   # taskweft's own resolved version, not a separately hand-bumped constant —
   # a hardcoded duplicate went stale the first time taskweft was bumped
-  # without a matching edit here. Safe to read at compile time: taskweft is
-  # a path dep in this monorepo, so its .app spec is already loaded by the
-  # time this module compiles.
-  @taskweft_version Application.spec(:taskweft, :vsn) |> to_string()
+  # without a matching edit here. `Application.spec(:taskweft, :vsn)` doesn't
+  # work here (returns nil): this module compiles as *part of* the :taskweft
+  # app now (folded in from a formerly-separate deploy/ Mix project, where it
+  # was a genuine cross-app path-dependency read against an already-compiled
+  # :taskweft) -- reading your own app's .app spec while still compiling it
+  # is self-referential and empty. `Mix.Project.config()/0` has no such
+  # ordering problem (same pattern `Taskweft.CLI` already uses for its own
+  # `@version`): it just reads mix.exs's own project config directly.
+  @taskweft_version Mix.Project.config()[:version]
 
   # Baked into the image at build time (Containerfile ARG GIT_SHA), not read
   # from a runtime env var — so it can never drift from what was actually

@@ -56,8 +56,11 @@ defmodule Taskweft.MCP.Server do
   # numbers that don't need to be synced, just don't advertise one; ex_mcp
   # falls back to its own default ("1.0.0") for `serverInfo.version`, which
   # callers should treat as informational only, not as this package's actual
-  # release version (that's `Application.spec(:taskweft_mcp, :vsn)`, used
-  # correctly elsewhere in this file, e.g. the taskweft://meta resource).
+  # release version (that's `Application.spec(:taskweft, :vsn)`, read at
+  # request time — not a compile-time module attribute, so it isn't subject
+  # to the self-referential-.app-spec problem `TaskweftDeploy.Router`'s own
+  # `@taskweft_version` hit — used correctly elsewhere in this file, e.g.
+  # the taskweft://meta resource).
   use ExMCP.Server.DSL, name: "taskweft"
 
   # ---------- TOOLS ----------
