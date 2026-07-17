@@ -1,8 +1,13 @@
-# Elixir/Mix
-/_build/
-/deps/
-/priv/libtaskweft_nif.so
+/_build
+/cover
+/deps
+/doc
+/.fetch
+erl_crash.dump
+*.ez
 *.beam
+/config/*.secret.exs
+.elixir_ls/
 
 # CLI build directories
 cli/.build_native/
