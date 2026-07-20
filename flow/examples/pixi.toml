@@ -1,0 +1,12 @@
+[workspace]
+authors = ["K. S. Ernest (iFire) Lee <ernest.lee@chibifire.com>"]
+channels = ["conda-forge"]
+name = "examples"
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+test-fanout = "python test_picoquic_fanout.py"
+
+[dependencies]
+aioquic = ">=1.3.0,<2"
