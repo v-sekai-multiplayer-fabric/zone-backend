@@ -6,6 +6,7 @@ defmodule Uro.Repo.Migrations.CreateSharedFileSemanticTags do
   def change do
     create table(:shared_file_semantic_tags, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :shared_file_id, references(:shared_files, type: :binary_id, on_delete: :delete_all),
         null: false
 
