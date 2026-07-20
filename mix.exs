@@ -43,6 +43,23 @@ defmodule Uro.MixProject do
   #
   # Type `mix help deps` for examples and options.
   defp deps do
+    common_deps() ++ dev_evaluation_deps()
+  end
+
+  # weft_warp_burrito hardcodes mingw32-make and requires Elixir ~> 1.20 in its
+  # own mix.exs, so it cannot compile on this org's Linux CI runners regardless
+  # of MIX_ENV -- Mix compiles every declared dependency unconditionally. Kept
+  # out of CI entirely (GitHub Actions always sets CI=true) while still being
+  # fetchable for local :dev evaluation, per docs/decisions/0013.
+  defp dev_evaluation_deps do
+    if System.get_env("CI") do
+      []
+    else
+      [{:weft_warp_burrito, github: "weftspun/weft-warp-burrito", only: :dev, runtime: false}]
+    end
+  end
+
+  defp common_deps do
     [
       {:phoenix, "~> 1.7"},
       {:phoenix_pubsub, "~> 2.0"},
@@ -80,6 +97,7 @@ defmodule Uro.MixProject do
       {:taskweft, github: "V-Sekai-fire/multiplayer-fabric-taskweft"},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
+      {:mox, "~> 1.1", only: :test},
 
       # OpenTelemetry — ships spans + logs to multiplayer-fabric-observability
       {:opentelemetry, "~> 1.6"},

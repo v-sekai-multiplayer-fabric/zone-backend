@@ -3,7 +3,7 @@
 
 defmodule Uro.VSekai.EntityPlanner do
   @moduledoc """
-  Thin wrapper around `Taskweft.NIF.plan/1`.
+  Thin wrapper around `Uro.Planner.plan/1`.
 
   Takes a JSON-LD domain string and an optional state override map, returns
   the plan as a JSON string. The planner is domain-agnostic — it knows nothing
@@ -15,15 +15,13 @@ defmodule Uro.VSekai.EntityPlanner do
       {:ok, plan} = EntityPlanner.plan(domain, %{"threat_nearby" => true})
   """
 
-  alias Taskweft.NIF, as: TW
-
   @type state_override :: %{String.t() => term()}
 
   @spec plan(String.t(), state_override()) :: {:ok, String.t()} | {:error, term()}
   def plan(domain_json, state \\ %{}) when is_binary(domain_json) do
     input = apply_state(domain_json, state)
 
-    case TW.plan(input) do
+    case Uro.Planner.plan(input) do
       result when is_binary(result) -> {:ok, result}
       other -> {:error, {:planner_error, other}}
     end
