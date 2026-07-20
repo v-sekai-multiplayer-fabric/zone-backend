@@ -78,6 +78,7 @@ defmodule Uro.MixProject do
       {:scrivener_ecto, "~> 3.1"},
       {:ex_marcel, "~> 0.1.0"},
       {:taskweft, github: "V-Sekai-fire/multiplayer-fabric-taskweft"},
+      {:weft_warp_burrito, github: "weftspun/weft-warp-burrito"},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
 
