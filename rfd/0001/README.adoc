@@ -1,0 +1,164 @@
+:showtitle:
+:toc: left
+:icons: font
+:state: published
+:discussion:
+:labels: software, security, windows
+:authors: K. S. Ernest (iFire) Lee <ernest.lee@chibifire.com>
+
+= RFD 1 Porting weft-warp-loop's s7-in-libriscv sandbox to a standalone Burrito release
+
+This RFD is a backfill: it documents a decision and port that were
+already implemented before this document existed, so that the design
+is recorded rather than only inferable from source and commit history.
+
+== Background
+
+`weft-warp-loop` (`C:\Users\ernes\Desktop\weft-warp-loop`) is a large,
+multi-domain repository: a FoundationDB Flow actor toolchain, a
+Lean4-verified reference model (`fanout-core`), a taskweft HTN planner
+written against a `shrubbery`-to-Scheme DSL, and, most relevantly here,
+a sandboxed scripting tier built on `s7` (an embeddable Scheme
+interpreter) cross-compiled to RISC-V and run inside `libriscv`, a
+userspace RISC-V VM.
+
+That sandbox tier already had two consumers in progress within
+`weft-warp-loop` itself:
+
+* `flow-toolchain/examples/s7_riscv_*_golden_test.cpp` - host-side
+  tests that run the guest directly against fixed, Lean4-verified
+  golden vectors for three content domains: loot rolls, combat replay,
+  and progression replay.
+* `flow-toolchain/riscv-guests/s7_sandbox_guest.c` - an in-progress
+  port of the same guest into a `fabric-godot-core` Sandbox module,
+  using Godot's `Variant` wire format for marshalling. As of this
+  writing that port only exposes `guest_loot_roll` and
+  `guest_combat_replay` (task E, progression not yet started).
+
+`weft-warp-burrito` is a third, independent consumer: the same s7/
+libriscv guest, wrapped in a dirty Erlang NIF and driven from Elixir,
+packaged as a single Windows executable via `Burrito`. It is not a
+Godot module and carries none of the `Variant`/`GuestVariant` wire
+format - the host/guest boundary here is plain scalars and a small
+fixed struct, which is all three capabilities need.
+
+== What was ported, verbatim
+
+The four `.scm` content files - `record-macros.scm`, `loot.scm`,
+`combat.scm`, `progression.scm` - are byte-for-byte identical to
+`flow-toolchain/riscv-guests/content/*.scm` in `weft-warp-loop`. This
+was verified with `diff -q` across all four files at the time of this
+RFD and should stay true going forward: these files are a pinned
+snapshot of already-Lean4-verified logic, not a place to make
+independent edits. If the upstream content changes, re-copy it rather
+than hand-patching a divergence.
+
+The three capabilities and their fixed reference vectors:
+
+[cols="1,3"]
+|===
+| Capability | Reference vector
+
+| `loot_roll`
+| `loot-roll(42, [(1,10),(2,20),(3,5)]) = 3`
+
+| `combat_replay`
+| spawn, 30 ticks, one opener attack -> `tick=30, hp=90, alive=1`
+
+| `progression_replay`
+| `grant(1), grant(1), sell(1,50), train, buyArt(1)` -> `credits=150, affinity=16`
+|===
+
+These match `s7_riscv_loot_golden_test.cpp`,
+`s7_riscv_combat_golden_test.cpp`, and
+`s7_riscv_progression_golden_test.cpp` respectively, each in turn
+checked against a Lean4 reference. `weft-warp-burrito` is, as of this
+RFD, the only one of the three consumers with a working
+`progression_replay` capability - the Godot port has not reached it
+yet.
+
+== Design decisions carried over unchanged
+
+These were established in `weft-warp-loop` and re-applied here rather
+than re-derived, because they are the actual security boundary, not
+incidental style:
+
+* *No generic eval.* The NIF (`c_src/nif/weft_sandbox_nif.cpp`) and the
+  guest (`c_src/guest/weft_guest.c`) each expose exactly three named,
+  fixed entry points. There is no "call this named guest symbol" or
+  "eval this string" path anywhere in the boundary. Adding a
+  capability means adding guest code and a NIF case by hand.
+* *Gas, not wall-clock.* Every call takes an explicit fuel (RISC-V
+  instruction count) budget that `libriscv`'s own `simulate_with`
+  enforces. A call either completes within budget or the NIF returns
+  `{:error, :gas_exhausted}` - this is the same fuel-metering model
+  `weft-warp-loop`'s golden tests already rely on.
+* *Actor-per-Machine.* `WeftWarpBurrito.Sandbox` is a GenServer owning
+  exactly one `libriscv::Machine`; its mailbox serializes calls into
+  that Machine (two concurrent calls would race on the same CPU
+  registers/stack pointer). This is "pause between gas-metered calls,"
+  not mid-instruction suspend/resume - there is no guest-side
+  coroutine/yield support in either the Godot port or this one.
+
+== What was deliberately not ported
+
+* The `GuestVariant`/`Variant` wire format from the Godot port.
+  `weft-warp-burrito` has no Godot host to marshal into; its `NIF`
+  returns plain Erlang terms (integers, tuples) instead, via a much
+  simpler fixed `GuestResult{int64_t values[4]; int32_t count}` struct
+  returned through the standard riscv64 `lp64d` hidden-pointer ABI.
+* The `shrubbery`/taskweft HTN planner content and DSL. That is a
+  separate, much larger surface (`flow-toolchain/riscv-guests/
+  shrubbery/*.shrub` and its generated `.scm` output) with its own
+  MCP-facing project (`taskweft`) and was out of scope for this port.
+* `flow-toolchain` itself (the Flow actor compiler, `fanout-core`'s
+  Lean4 proofs, the actor-based host harness). `weft-warp-burrito`
+  only needed a way to call three fixed, already-verified guest
+  functions from a BEAM process - it did not need Flow's actor model,
+  since Elixir/OTP's own GenServer already supplies the "one owner,
+  serialized access" property Flow was providing on the C++ side.
+* The syscall allowlist narrowing noted as unstarted in
+  `riscv-guests/README.md` ("Not done here"). `weft-warp-burrito`'s
+  guest still runs under whatever `setup_linux_syscalls()` installs,
+  same as the Godot port at the time of writing. This remains an open
+  gap in both, not something this port closed.
+
+== Toolchain note carried forward
+
+The RISC-V cross-compiler is `xpack-dev-tools/riscv-none-elf-gcc-xpack`
+(newlib, not musl - musl was explicitly ruled out for this tier in
+`weft-warp-loop`). `weft-warp-loop`'s own `riscv-guests/README.md`
+documents a real `MAX_PATH`-related failure mode on Windows: extracting
+the toolchain under a long path breaks its own internal
+`../../../../`-relative include search and produces a misleading
+"`sys/unistd.h`: No such file or directory" error even though the file
+exists. `weft-warp-burrito`'s toolchain was installed under
+`%USERPROFILE%\scoop\apps\riscv-none-elf-gcc\current` for this reason -
+short, junction-based, and consistent with `scoop`'s own app-versioning
+convention already used for the rest of this machine's toolchains.
+
+== Verification
+
+`mix test` builds both the guest ELF (via the vendored `c_src/Makefile`,
+cross-compiling with `riscv-none-elf-gcc`) and the host NIF (via CMake
++ Ninja), then runs `test/weft_warp_burrito_test.exs`, which checks all
+three capabilities against the same golden vectors above, plus
+gas-exhaustion behavior and actor independence (two `Sandbox` PIDs
+producing the same deterministic result from independent `Machine`
+instances). All five tests currently pass.
+
+== Unresolved questions
+
+* Should `weft-warp-burrito` re-pull `.scm` content automatically from
+  `weft-warp-loop` (a real dependency, e.g. a build-time copy step with
+  a checksum), or continue as a manually re-synced snapshot? The latter
+  is simpler but can silently drift.
+* If the Godot port's `progression_replay` capability is finished
+  later, should its `GuestVariant`-based `s7_sandbox_guest.c` and this
+  repo's `GuestResult`-based `weft_guest.c` be reconciled into one
+  guest source shared by both hosts, or is duplicating the ~150 lines
+  of capability wrappers an acceptable cost for keeping each host's
+  wire format independent?
+* The syscall-allowlist narrowing gap applies equally here; closing it
+  in one consumer first (this one, or the Godot port) and back porting
+  is still an open choice, not a scheduled one.
