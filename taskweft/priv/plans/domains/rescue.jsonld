@@ -1,0 +1,409 @@
+{
+  "@context": {
+    "khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
+    "domain": "khr:planning/domain/"
+  },
+  "@type": "domain:Definition",
+  "name": "rescue",
+  "enums": {
+    "status": {
+      "free": 0,
+      "injured": 1,
+      "dead": 2,
+      "unk": 3,
+      "ok": 4,
+      "busy": 5
+    },
+    "robot_type": {
+      "wheeled": 0,
+      "uav": 1
+    }
+  },
+  "variables": [
+    {
+      "name": "loc",
+      "type": "int",
+      "init": {
+        "r1": 0,
+        "w1": 1,
+        "p1": 2,
+        "a1": 3
+      }
+    },
+    {
+      "name": "robot_type",
+      "type": "int",
+      "init": {
+        "r1": 0,
+        "w1": 0,
+        "a1": 1
+      }
+    },
+    {
+      "name": "has_medicine",
+      "type": "int",
+      "init": {
+        "a1": 0,
+        "w1": 0,
+        "r1": 0
+      }
+    },
+    {
+      "name": "status",
+      "type": "int",
+      "init": {
+        "r1": 0,
+        "w1": 0,
+        "a1": 3,
+        "p1": 3
+      }
+    },
+    {
+      "name": "altitude",
+      "type": "int",
+      "init": {
+        "a1": 0
+      }
+    }
+  ],
+  "actions": {
+    "a_free_robot": {
+      "params": [
+        "robot"
+      ],
+      "body": [
+        {
+          "pointer/set": "/status/{robot}",
+          "value": 0
+        }
+      ]
+    },
+    "a_move_euclidean": {
+      "params": [
+        "robot",
+        "dest"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/robot_type/{robot}"
+            },
+            "b": 0
+          }
+        },
+        {
+          "pointer/set": "/loc/{robot}",
+          "value": "{dest}"
+        }
+      ]
+    },
+    "a_move_fly": {
+      "params": [
+        "robot",
+        "dest"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/robot_type/{robot}"
+            },
+            "b": 1
+          }
+        },
+        {
+          "pointer/set": "/loc/{robot}",
+          "value": "{dest}"
+        }
+      ]
+    },
+    "a_inspect_person": {
+      "params": [
+        "robot",
+        "person"
+      ],
+      "body": [
+        {
+          "pointer/set": "/status/{person}",
+          "value": 1
+        }
+      ]
+    },
+    "a_inspect_location": {
+      "params": [
+        "robot",
+        "loc_id"
+      ],
+      "body": []
+    },
+    "a_support_person": {
+      "params": [
+        "robot",
+        "person"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/status/{person}"
+            },
+            "b": 1
+          }
+        },
+        {
+          "pointer/set": "/status/{person}",
+          "value": 4
+        }
+      ]
+    },
+    "a_change_altitude": {
+      "params": [
+        "drone",
+        "new_alt"
+      ],
+      "body": [
+        {
+          "pointer/set": "/altitude/{drone}",
+          "value": "{new_alt}"
+        }
+      ]
+    },
+    "a_capture_image": {
+      "params": [
+        "robot",
+        "camera",
+        "loc_id"
+      ],
+      "body": []
+    },
+    "a_check_real": {
+      "params": [
+        "loc_id"
+      ],
+      "body": []
+    }
+  },
+  "methods": {
+    "move_task": {
+      "params": [
+        "robot",
+        "dest"
+      ],
+      "alternatives": [
+        {
+          "name": "already_there",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/loc/{robot}"
+                },
+                "b": "{dest}"
+              }
+            }
+          ],
+          "subtasks": []
+        },
+        {
+          "name": "euclidean",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/robot_type/{robot}"
+                },
+                "b": 0
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_move_euclidean",
+              "{robot}",
+              "{dest}"
+            ]
+          ]
+        },
+        {
+          "name": "fly",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/robot_type/{robot}"
+                },
+                "b": 1
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_move_fly",
+              "{robot}",
+              "{dest}"
+            ]
+          ]
+        }
+      ]
+    },
+    "rescue_task": {
+      "params": [
+        "robot",
+        "person"
+      ],
+      "alternatives": [
+        {
+          "name": "ground_rescue",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/robot_type/{robot}"
+                },
+                "b": 0
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "help_person_task",
+              "{robot}",
+              "{person}"
+            ]
+          ]
+        }
+      ]
+    },
+    "help_person_task": {
+      "params": [
+        "robot",
+        "person"
+      ],
+      "alternatives": [
+        {
+          "name": "move_inspect_support",
+          "subtasks": [
+            [
+              "move_task",
+              "{robot}",
+              2
+            ],
+            [
+              "a_inspect_person",
+              "{robot}",
+              "{person}"
+            ],
+            [
+              "support_task",
+              "{robot}",
+              "{person}"
+            ]
+          ]
+        }
+      ]
+    },
+    "support_task": {
+      "params": [
+        "robot",
+        "person"
+      ],
+      "alternatives": [
+        {
+          "name": "support_injured",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/status/{person}"
+                },
+                "b": 1
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_support_person",
+              "{robot}",
+              "{person}"
+            ]
+          ]
+        }
+      ]
+    },
+    "adjust_altitude_task": {
+      "params": [
+        "robot"
+      ],
+      "alternatives": [
+        {
+          "name": "go_low",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/altitude/{robot}"
+                },
+                "b": 0
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_change_altitude",
+              "{robot}",
+              1
+            ]
+          ]
+        },
+        {
+          "name": "go_high",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/altitude/{robot}"
+                },
+                "b": 1
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_change_altitude",
+              "{robot}",
+              0
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "todo_list": [
+    [
+      "rescue_task",
+      "r1",
+      "p1"
+    ]
+  ]
+}

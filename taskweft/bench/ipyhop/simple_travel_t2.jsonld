@@ -1,0 +1,167 @@
+{
+  "@context": {
+    "vsekai": "https://v-sekai.org/",
+    "domain": "vsekai:planning/domain/"
+  },
+  "@type": "domain:Definition",
+  "name": "ipyhop_simple_travel_t2",
+  "description": "IPyHOP simple_travel task_list_2: alice (taxi, 3 steps) + bob (walk, 1 step) → park.",
+  "variables": [
+    {
+      "name": "loc",
+      "type": "ref",
+      "init": {
+        "alice": "home_a",
+        "bob": "home_b",
+        "taxi1": "park",
+        "taxi2": "station"
+      }
+    },
+    {
+      "name": "cash",
+      "type": "float",
+      "init": {
+        "alice": 20.0,
+        "bob": 15.0
+      }
+    },
+    {
+      "name": "owe",
+      "type": "float",
+      "init": {
+        "alice": 0.0,
+        "bob": 0.0
+      }
+    }
+  ],
+  "actions": {
+    "a_call_taxi": {
+      "params": [
+        "person",
+        "from_loc"
+      ],
+      "body": [
+        {
+          "pointer/set": "/loc/taxi1",
+          "value": "{from_loc}"
+        },
+        {
+          "pointer/set": "/loc/{person}",
+          "value": "taxi1"
+        }
+      ]
+    },
+    "a_ride_taxi": {
+      "params": [
+        "person",
+        "to_loc"
+      ],
+      "body": [
+        {
+          "pointer/set": "/loc/taxi1",
+          "value": "{to_loc}"
+        },
+        {
+          "pointer/set": "/owe/{person}",
+          "value": 5.5
+        }
+      ]
+    },
+    "a_pay_driver": {
+      "params": [
+        "person",
+        "to_loc"
+      ],
+      "body": [
+        {
+          "pointer/set": "/loc/{person}",
+          "value": "{to_loc}"
+        },
+        {
+          "pointer/set": "/owe/{person}",
+          "value": 0.0
+        }
+      ]
+    },
+    "a_walk": {
+      "params": [
+        "person",
+        "to_loc"
+      ],
+      "body": [
+        {
+          "pointer/set": "/loc/{person}",
+          "value": "{to_loc}"
+        }
+      ]
+    }
+  },
+  "methods": {
+    "travel": {
+      "params": [
+        "person",
+        "dest"
+      ],
+      "alternatives": [
+        {
+          "name": "already_there",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/loc/{person}"
+                },
+                "b": "{dest}"
+              }
+            }
+          ],
+          "subtasks": []
+        },
+        {
+          "name": "by_taxi",
+          "subtasks": [
+            [
+              "a_call_taxi",
+              "{person}",
+              "/loc/{person}"
+            ],
+            [
+              "a_ride_taxi",
+              "{person}",
+              "{dest}"
+            ],
+            [
+              "a_pay_driver",
+              "{person}",
+              "{dest}"
+            ]
+          ]
+        },
+        {
+          "name": "by_foot",
+          "subtasks": [
+            [
+              "a_walk",
+              "{person}",
+              "{dest}"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "todo_list": [
+    [
+      "travel",
+      "alice",
+      "park"
+    ],
+    [
+      "travel",
+      "bob",
+      "park"
+    ]
+  ]
+}

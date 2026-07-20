@@ -1,0 +1,5 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Single-token `zig c++` shim so sccache can identify it as a clang-like
+# compiler (sccache rejects the two-token `zig c++`).
+exec zig c++ "$@"

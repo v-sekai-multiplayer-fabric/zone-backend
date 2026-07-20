@@ -1,0 +1,360 @@
+{
+  "@context": {
+    "khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
+    "domain": "khr:planning/domain/"
+  },
+  "@type": "domain:Definition",
+  "name": "service_bringup",
+  "version": "0.2",
+  "description": "Generic stub-green-refactor pattern for walking items through a phased lifecycle, with optional prototype-first alternative, plus the small set of verification primitives (set_stack_ready, verify_pass, verify_scenario, set_prototype_first) that problems compose into their own per-item workflows. The domain knows nothing about which items exist, which items depend on which, what 'stack_ready' or 'pass_condition' or 'scenario' keys mean — those are problem-supplied. Entity is hardcoded to 'ifire'; fork or add a param if multi-entity planning becomes a real requirement.",
+  "enums": {
+    "phase": {
+      "unstarted": 0,
+      "stub": 1,
+      "green": 2,
+      "done": 3
+    },
+    "approach": {
+      "direct": 0,
+      "prototype_first": 1
+    },
+    "status": {
+      "unmet": 0,
+      "met": 1
+    }
+  },
+  "variables": [
+    {
+      "name": "phase",
+      "type": "int",
+      "description": "Phase per item. 0=unstarted, 1=stub (interfaces + failing tests), 2=green (implementation passes), 3=done (refactored + documented). Key space supplied by the problem."
+    },
+    {
+      "name": "approach",
+      "type": "int",
+      "description": "Chosen implementation approach per item. 0=direct, 1=prototype_first. Set by a_set_prototype_first. Optional — problems that have no prototype-first alternatives can omit this variable."
+    },
+    {
+      "name": "stack_ready",
+      "type": "int",
+      "description": "Per-component ready flag. 0=not ready, 1=ready. Flipped by a_set_stack_ready. Key space supplied by the problem; problems that don't track stack components can omit this variable."
+    },
+    {
+      "name": "pass_condition",
+      "type": "int",
+      "description": "Per-condition verification flag. 0=unmet, 1=met. Flipped by a_verify_pass. Key space supplied by the problem; problems without verifiable pass conditions can omit this variable."
+    },
+    {
+      "name": "scenario",
+      "type": "int",
+      "description": "Per-scenario verification flag. 0=unverified, 1=verified. Flipped by a_verify_scenario. Key space supplied by the problem; problems without end-to-end scenarios can omit this variable."
+    }
+  ],
+  "actions": {
+    "a_stub": {
+      "description": "Define interfaces and write failing tests. P7D = one Saturday.",
+      "duration": "P7D",
+      "params": [
+        "item",
+        "entity"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/phase/{item}"
+            },
+            "b": 0
+          }
+        },
+        {
+          "pointer/set": "/phase/{item}",
+          "value": 1
+        }
+      ]
+    },
+    "a_green": {
+      "description": "Implement to passing tests. P14D = two Saturdays.",
+      "duration": "P14D",
+      "params": [
+        "item",
+        "entity"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/phase/{item}"
+            },
+            "b": 1
+          }
+        },
+        {
+          "pointer/set": "/phase/{item}",
+          "value": 2
+        }
+      ]
+    },
+    "a_refactor": {
+      "description": "Clean up, document, write a one-page README. P7D = one Saturday.",
+      "duration": "P7D",
+      "params": [
+        "item",
+        "entity"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/phase/{item}"
+            },
+            "b": 2
+          }
+        },
+        {
+          "pointer/set": "/phase/{item}",
+          "value": 3
+        }
+      ]
+    },
+    "a_set_prototype_first": {
+      "description": "Record that this item uses the prototype-first approach before committing to full implementation. PT0S — bookkeeping only.",
+      "duration": "PT0S",
+      "params": [
+        "item"
+      ],
+      "body": [
+        {
+          "pointer/set": "/approach/{item}",
+          "value": 1
+        }
+      ]
+    },
+    "a_set_stack_ready": {
+      "description": "Mark a component as ready for downstream consumers once its implementing item is done. PT0S.",
+      "duration": "PT0S",
+      "params": [
+        "component",
+        "entity"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/stack_ready/{component}"
+            },
+            "b": 0
+          }
+        },
+        {
+          "pointer/set": "/stack_ready/{component}",
+          "value": 1
+        }
+      ]
+    },
+    "a_verify_pass": {
+      "description": "Verify the named pass_condition has been met and flip it. PT0S.",
+      "duration": "PT0S",
+      "params": [
+        "condition",
+        "entity"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/pass_condition/{condition}"
+            },
+            "b": 0
+          }
+        },
+        {
+          "pointer/set": "/pass_condition/{condition}",
+          "value": 1
+        }
+      ]
+    },
+    "a_verify_scenario": {
+      "description": "Run an end-to-end scenario and flip its scenario flag on success. P7D = one Saturday of demo work.",
+      "duration": "P7D",
+      "params": [
+        "scenario_name",
+        "entity"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/scenario/{scenario_name}"
+            },
+            "b": 0
+          }
+        },
+        {
+          "pointer/set": "/scenario/{scenario_name}",
+          "value": 1
+        }
+      ]
+    }
+  },
+  "methods": {
+    "complete_item": {
+      "description": "Walk a single item through stub → green → refactor (3 actions, ~4 Saturdays). Done short-circuit + resume alternatives let problems express dependency graphs by calling complete_item transitively without redoing finished work.",
+      "params": [
+        "item"
+      ],
+      "alternatives": [
+        {
+          "name": "done",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/phase/{item}"
+                },
+                "b": 3
+              }
+            }
+          ],
+          "subtasks": []
+        },
+        {
+          "name": "resume_from_green",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/phase/{item}"
+                },
+                "b": 2
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_refactor",
+              "{item}",
+              "ifire"
+            ]
+          ]
+        },
+        {
+          "name": "resume_from_stub",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/phase/{item}"
+                },
+                "b": 1
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_green",
+              "{item}",
+              "ifire"
+            ],
+            [
+              "a_refactor",
+              "{item}",
+              "ifire"
+            ]
+          ]
+        },
+        {
+          "name": "direct",
+          "subtasks": [
+            [
+              "a_stub",
+              "{item}",
+              "ifire"
+            ],
+            [
+              "a_green",
+              "{item}",
+              "ifire"
+            ],
+            [
+              "a_refactor",
+              "{item}",
+              "ifire"
+            ]
+          ]
+        }
+      ]
+    },
+    "complete_item_prototype_first": {
+      "description": "Prototype-first variant: mark the approach, then stub → green (prototype pass) → green (second pass for real impl) → refactor. ~5 Saturdays. Use when the problem has an alternative where the first green pass is throwaway/exploratory.",
+      "params": [
+        "item"
+      ],
+      "alternatives": [
+        {
+          "name": "done",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/phase/{item}"
+                },
+                "b": 3
+              }
+            }
+          ],
+          "subtasks": []
+        },
+        {
+          "name": "direct",
+          "subtasks": [
+            [
+              "a_set_prototype_first",
+              "{item}"
+            ],
+            [
+              "a_stub",
+              "{item}",
+              "ifire"
+            ],
+            [
+              "a_green",
+              "{item}",
+              "ifire"
+            ],
+            [
+              "a_green",
+              "{item}",
+              "ifire"
+            ],
+            [
+              "a_refactor",
+              "{item}",
+              "ifire"
+            ]
+          ]
+        }
+      ]
+    }
+  }
+}
