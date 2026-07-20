@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// A minimal HTN (Hierarchical Task Network) forward-decomposition core,
+// ported to shrubbery notation - closes the stale claim ADR 0007
+// originally made (a "taskweft-lite.scm" that never actually existed
+// anywhere in this repo, caught while actually building this).
+//
+// This is the core search algorithm behind taskweft/taskweft's `plan`
+// tool (docs/rectgtn.md, GTPyHOP's find_plan(state, todo_list)), scoped
+// to exactly the TwCall task kind ADR 0007 already named as the
+// starting point - NOT the full RECTGTN model (goals, multigoals,
+// ReBAC/capability graphs, temporal reasoning), which stays explicitly
+// deferred per that ADR. Actions and methods are s7 data (an alist),
+// not parsed from JSON-LD - a real, documented simplification, same
+// "explicit subset, not silent guessing" discipline as the shrubbery
+// reader and the restricted IR.
+//
+// Verified against this repo's own real domain, plan/bootstrap-domain.json
+// (hand-encoded as s7 data below the algorithm, in the golden-vector
+// test) - not a synthetic example.
+
+define alist-set(al, key, val):
+  cond:
+    | null?(al): list(cons(key, val))
+    | equal?(car(car(al)), key): cons(cons(key, val), cdr(al))
+    | else: cons(car(al), alist-set(cdr(al), key, val))
+
+define apply-effects(state, effects):
+  cond:
+    | null?(effects): state
+    | else: apply-effects(alist-set(state, car(car(effects)), cdr(car(effects))), cdr(effects))
+
+define run-action(state, name, actions):
+  let*(body: cdr(assoc(name, actions))):
+    apply-effects(state, body)
+
+define try-alternatives(state, todo, alts, actions, methods):
+  cond:
+    | null?(alts): #f
+    | else: let*(subtasks: cdr(car(alts))):
+        let*(result: find-plan(state, append(subtasks, todo), actions, methods)):
+          cond:
+            | result: result
+            | else: try-alternatives(state, todo, cdr(alts), actions, methods)
+
+// find-plan(state, todo, actions, methods) -> (list final-state plan) on
+// success, or #f on failure (an unknown task, or every method
+// alternative exhausted without success).
+define find-plan(state, todo, actions, methods):
+  cond:
+    | null?(todo): list(state, '())
+    | else: let*(task: car(todo), rest: cdr(todo), name: car(task)):
+        cond:
+          | assoc(name, actions): let*(new-state: run-action(state, name, actions)):
+              let*(sub: find-plan(new-state, rest, actions, methods)):
+                cond:
+                  | sub: list(car(sub), cons(name, car(cdr(sub))))
+                  | else: #f
+          | assoc(name, methods): try-alternatives(state, rest, cdr(assoc(name, methods)), actions, methods)
+          | else: #f

@@ -1,0 +1,55 @@
+{
+  "@context": {
+    "khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
+    "domain": "khr:planning/domain/"
+  },
+  "@type": "domain:Problem",
+  "name": "blocks_world_goal",
+  "source": "blocks_world",
+  "description": "IPyHOP blocks_world goal-based: achieve c on b on a on table.",
+  "variables": [
+    {
+      "name": "pos",
+      "type": "ref",
+      "init": {
+        "a": "b",
+        "b": "table",
+        "c": "table"
+      }
+    },
+    {
+      "name": "clear",
+      "type": "bool",
+      "init": {
+        "c": true,
+        "b": false,
+        "a": true
+      }
+    },
+    {
+      "name": "holding",
+      "type": "bool",
+      "init": {
+        "hand": false
+      }
+    }
+  ],
+  "todo_list": [
+    {
+      "goal": [
+        {
+          "pointer": "/pos/a",
+          "eq": "table"
+        },
+        {
+          "pointer": "/pos/b",
+          "eq": "a"
+        },
+        {
+          "pointer": "/pos/c",
+          "eq": "b"
+        }
+      ]
+    }
+  ]
+}

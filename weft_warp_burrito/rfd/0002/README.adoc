@@ -1,0 +1,179 @@
+:showtitle:
+:toc: left
+:icons: font
+:state: prediscussion
+:discussion:
+:labels: software, security, migration
+:authors: K. S. Ernest (iFire) Lee <ernest.lee@chibifire.com>
+
+= RFD 2 Archiving weft-warp-burrito: carrying sandbox, gas, pause, and true resume forward
+
+Unlike xref:../0001/README.adoc[RFD 1], which backfills a decision
+already made, this RFD is a forward proposal: `weft-warp-burrito` is
+going to be archived, and its BEAM/OTP + dirty-NIF host - the
+Flow-actor replacement ADR 0007 already scoped but never built until
+this repo built it - moves into `weft-warp-loop` as the real host for
+this sandbox tier, not as reference code to reimplement. One genuinely
+new capability, true mid-execution resume, gets designed and built as
+part of that move too.
+
+== Motivation
+
+`weft-warp-burrito` is not just a Windows/Burrito packaging exercise of
+code `weft-warp-loop` already has - it is the reference implementation
+of a replacement `weft-warp-loop` itself already scoped and has not yet
+built. `weft-warp-loop`'s host today is a Flow actor program
+(`flow-toolchain`, FoundationDB's C++ actor runtime - see
+`s7_riscv_actor.actor.cpp`, ADR 0006's "called from a real Flow actor").
+ADR 0007 item 2 proposed replacing that host, for this sandbox tier,
+with BEAM: "exposing a bounded s7/libriscv VMCALL as an Elixir NIF via
+`elixir-nx/fine`... compatible with this repo's existing 'no
+indefinitely-running loop inside the BEAM VM' constraint, since one
+fuel-bounded VMCALL is exactly the quick-return shape a NIF needs" - and
+named a sibling precedent already doing this, `taskweft/nif`'s own
+C++20 NIF. `weft-warp-burrito`'s `WeftWarpBurrito.Sandbox` GenServer
+plus dirty NIF (`c_src/nif/weft_sandbox_nif.cpp`) is exactly that
+proposal, built and proven: one BEAM actor per `libriscv::Machine`,
+calling in via a dirty (not scheduler-blocking) NIF, each call a single
+fuel-bounded `simulate_with`. This is not hypothetical "unless the
+destination gains its own BEAM-based host" - building that host *is*
+the point of archiving this repo into `weft-warp-loop` rather than just
+deleting it.
+
+This does not conflict with ADR 0006's earlier rejection of "AtomVM/
+BEAM-Lisp" - that rejection was specifically about running the *guest*
+language's own scheduler/GC/floats on BEAM, which would put
+non-bit-identical execution on the determinism-critical path. Using
+BEAM/OTP as the *host* actor runtime that calls into an already-
+deterministic `libriscv::Machine` through a synchronous, fuel-bounded
+NIF call is a different thing entirely: the guest still runs inside
+libriscv exactly as ADR 0006 specifies, byte-identically, regardless of
+what language or scheduler issued the call. The determinism boundary is
+the NIF call itself, not BEAM's own runtime.
+
+Separately, and lower-stakes: keeping the sandbox's guest-content logic
+maintained in two places - this repo and `weft-warp-loop`'s
+`flow-toolchain/riscv-guests/` - is already showing drift. This repo
+has a working `progression_replay` capability that `weft-warp-loop`'s
+in-progress Godot port does not yet have. Folding the code back into
+one active codebase removes that drift too, but it is secondary to the
+Flow-to-BEAM host replacement above.
+
+== What must survive the move
+
+Four properties, not just files, are the actual requirement - each one
+is a real security or correctness property of the sandbox, not
+incidental behavior:
+
+[cols="1,3,1"]
+|===
+| Property | What it means | Status today
+
+| *Sandbox*
+| Exactly a fixed, named, audited set of guest entry points is
+  callable - never a generic eval or caller-supplied symbol name. This
+  is what makes "run untrusted-ish s7 script" safe to expose at all.
+| Already true in both `weft-warp-burrito` and the Godot port. Carry
+  forward unchanged.
+
+| *Gas*
+| Every call takes an explicit fuel (RISC-V instruction count) budget
+  that `libriscv`'s `simulate_with<true>(fuel, ...)` enforces natively -
+  a call either finishes in-budget or the host gets a catchable
+  timeout exception, never a hang.
+| Already true. Carry forward unchanged.
+
+| *Pause*
+| Between calls, the actor holding a `Machine` is fully idle -
+  inspectable, restartable, free to process other messages. This is
+  actor-level pause, not script-level: it says nothing about what
+  happens *inside* one call.
+| Already true (`WeftWarpBurrito.Sandbox`'s GenServer mailbox
+  serializes access to one `Machine`).
+
+| *Resume*
+| **New.** A running s7 script can suspend mid-execution - not just
+  between calls - and be resumed later from exactly where it left off,
+  including any local Scheme state on its own call stack.
+| Does not exist in either repo today. `weft-warp-burrito`'s own NIF
+  header is explicit about this gap: "there is no guest-side
+  coroutine/yield support... pause *between* gas-metered calls, not
+  mid-instruction suspend/resume."
+|===
+
+== Why Resume is buildable now
+
+`libriscv::Machine` already has the primitive this needs:
+`serialize_to(std::vector<uint8_t>&)` /
+`deserialize_from(const std::vector<uint8_t>&)`
+(`c_src/thirdparty/libriscv/lib/libriscv/serialize.cpp`), which snapshots
+full CPU register state plus every memory page and can reconstruct a
+`Machine` from that snapshot later. This is exactly what "resume" needs
+on the host side - the missing piece is entirely guest-side
+cooperation: the guest has no way today to say "pause me here, not at a
+fuel-exhaustion boundary."
+
+Sketch of the missing half:
+
+. A new fixed guest entry point, `guest_yield()` (or a distinguished
+  `ecall`), that an s7 script can invoke voluntarily - e.g. via a new
+  Scheme primitive `(yield value)` bound into `g_sc` alongside the
+  existing content.
+. The host recognizes this as a distinct, expected control-transfer
+  (not a `MachineException`) and, instead of returning a final result,
+  calls `machine.serialize_to(blob)` and hands the caller
+  `{:suspended, resume_token}` instead of `{:ok, result}`.
+. `resume_token` is opaque to the caller and holds the serialized
+  bytes - never guest memory addresses or anything the caller could
+  meaningfully forge into a different, unintended machine state.
+. Resuming calls `deserialize_from(blob)` on a *fresh* `Machine` built
+  from the same guest ELF, then `simulate_with` continues execution
+  from the saved PC with a **new, independently-accounted** fuel
+  budget - a resumed call must not inherit unlimited fuel just because
+  it already ran partway.
+
+== What moves as-is, and what doesn't
+
+* *Moves as-is*: the Elixir/OTP + dirty-NIF host
+  (`lib/weft_warp_burrito/sandbox.ex`, `sandbox_nif.ex`,
+  `c_src/nif/weft_sandbox_nif.cpp`'s `erl_nif` bindings) *is* the
+  Flow-actor replacement ADR 0007 scoped and this RFD's Motivation
+  section justifies - it carries over as the real host, not as a
+  pattern to be reimplemented. What's Windows/Burrito-specific is only
+  the release packaging (`mix.exs`'s `releases()`/`Burrito.wrap/1`
+  step) - that part genuinely doesn't need to follow, since
+  `weft-warp-loop` isn't shipping a standalone Windows executable.
+* Only `mix.exs`'s Burrito release step and this repo's own
+  `burrito_out/` packaging are dropped. Whether `weft-warp-loop` runs
+  this new BEAM host as a Mix release, an escript, or embeds it however
+  its existing build orchestrates the Flow/CMake side is unresolved
+  below, not decided by this RFD.
+* `GuestResult`, this repo's plain fixed-struct return convention, is
+  simpler than the Godot port's `GuestVariant` wire format and was
+  never meant to unify with it (see RFD 1's unresolved questions) - the
+  question of which wire format `progression_replay` should use once
+  merged into `weft-warp-loop` is still open, not decided by this RFD.
+
+== Unresolved questions
+
+* Where does the merged code actually land in `weft-warp-loop` -
+  directly into `flow-toolchain/riscv-guests/s7_sandbox_guest.c`
+  (unifying with the Godot port), or as a third, separate guest file
+  next to it? This RFD takes no position; it only fixes the required
+  *properties* (sandbox/gas/pause/resume), not the file layout.
+* Serialized `Machine` state can be large (every touched memory page,
+  per `serialize.cpp`) - is a resume token held in-process (actor
+  state) sufficient, or does it need to survive an actor restart /
+  process crash, which would mean persisting it outside the BEAM or
+  Flow actor entirely?
+* Should suspend points be limited to specific, audited call sites (a
+  fixed set of "yield-safe" locations in the shipped `.scm` content),
+  or may any script-level `(yield ...)` call suspend anywhere? The
+  former is more auditable; the latter is more general but means
+  arbitrary partial-execution states get serialized and later resumed,
+  which is a larger attack surface to reason about than today's
+  all-or-nothing call semantics.
+* Fuel accounting across a suspend/resume chain: is there a cap on
+  total cumulative fuel across all resumes of one logical script run,
+  or does each resume get a fresh independent budget with no overall
+  ceiling?

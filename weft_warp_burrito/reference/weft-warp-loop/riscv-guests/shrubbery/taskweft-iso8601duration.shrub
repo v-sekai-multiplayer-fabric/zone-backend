@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 3b of the full taskweft port: lean/Planner/Iso8601Duration.lean -
+// a real recursive-descent parser for ISO 8601 durations
+// ("P15Y3M2DT1H14M37S"), not a simple function. totalMilliseconds_nil/
+// totalMilliseconds_cons need no porting (proofs, both `:= rfl`).
+//
+// DurUnit (no payload) -> plain symbols: 'Y 'Mo 'W 'D 'H 'Mi 'S.
+// DurComponent -> define-record. ParseError -> plain symbols for every
+// variant this port's golden vectors actually exercise (empty,
+// expectedP, unexpectedEnd, invalidNumber, dateAfterT, timeBeforeT,
+// duplicateT, mixedBasicExtended, unexpectedToken, nonCanonicalOrder,
+// fractionNotOnLast) - deliberately WITHOUT their Lean payload data
+// (the offending character/unit/raw-string), since nothing in the
+// source file's own 12 #eval doctests inspects that payload, only the
+// error variant itself. A real, documented simplification, not a
+// silent drop - if a future need arises to distinguish e.g. two
+// different invalidNumber causes, the payload would need to be added
+// back.
+//
+// parse's result is (list 'ok components) or (list 'error tag),
+// mirroring Lean's Except.
+
+// `any`/`quotient` - any is not an s7 builtin (established); quotient
+// IS a standard Scheme integer-division primitive, used here (not /,
+// which may return an exact rational for non-divisible inputs in s7).
+define list-any(pred, lst):
+  cond:
+    | null?(lst): #f
+    | pred(car(lst)): #t
+    | else: list-any(pred, cdr(lst))
+
+define-record(dur-component, unit, whole, frac-milli)
+
+define is-digit(c):
+  (and (>= (char->integer c) (char->integer #\0)) (<= (char->integer c) (char->integer #\9)))
+
+define digit-value(c):
+  (- (char->integer c) (char->integer #\0))
+
+// Iso8601Duration.takeNumber's nested `frac` helper: accumulate up to 3
+// fractional digits, then scale to milliseconds (a "0.5" fraction on
+// whatever unit -> 500 "milli" - the same idea as HH:MM:SS.mmm, just
+// generalized to any unit by this file's own fracContribution).
+define take-number-frac(acc, n, chars):
+  cond:
+    | null?(chars): (list (* acc (expt 10 (- 3 n))) chars)
+    | else: let*(d: car(chars)):
+        cond:
+          | (and (is-digit d) (< n 3)): take-number-frac(+(*(acc, 10), digit-value(d)), +(n, 1), cdr(chars))
+          | else: (list (* acc (expt 10 (- 3 n))) chars)
+
+// Iso8601Duration.takeNumber's nested `go` helper: accumulate whole
+// digits, then optionally a '.'-introduced fraction.
+define take-number-go(whole, chars):
+  cond:
+    | null?(chars): (list 'ok whole 0 '())
+    | else: let*(c: car(chars)):
+        cond:
+          | is-digit(c): take-number-go(+(*(whole, 10), digit-value(c)), cdr(chars))
+          | equal?(c, #\.): cond:
+              | (and (pair? (cdr chars)) (is-digit (car (cdr chars)))): let*(fr: take-number-frac(0, 0, cdr(chars))):
+                  (list 'ok whole (car fr) (car (cdr fr)))
+              | else: (list 'error 'invalidNumber)
+          | else: (list 'ok whole 0 chars)
+
+// Iso8601Duration.takeNumber
+define take-number(chars):
+  cond:
+    | null?(chars): (list 'error 'unexpectedEnd)
+    | else: let*(c: car(chars)):
+        cond:
+          | is-digit(c): take-number-go(digit-value(c), cdr(chars))
+          | else: (list 'error 'unexpectedToken)
+
+// Iso8601Duration.classifyUnit
+define classify-unit(in-time, c):
+  cond:
+    | (and (not in-time) (equal? c #\Y)): 'Y
+    | (and (not in-time) (equal? c #\M)): 'Mo
+    | (and (not in-time) (equal? c #\W)): 'W
+    | (and (not in-time) (equal? c #\D)): 'D
+    | (and in-time (equal? c #\H)): 'H
+    | (and in-time (equal? c #\M)): 'Mi
+    | (and in-time (equal? c #\S)): 'S
+    | else: #f
+
+// Iso8601Duration.crossSideUnit
+define cross-side-unit(in-time, c):
+  cond:
+    | (and in-time (equal? c #\Y)): 'Y
+    | (and in-time (equal? c #\D)): 'D
+    | (and (not in-time) (equal? c #\H)): 'H
+    | (and (not in-time) (equal? c #\S)): 'S
+    | else: #f
+
+// Iso8601Duration.unitRank
+define unit-rank(u):
+  cond:
+    | equal?(u, 'Y): 0
+    | equal?(u, 'Mo): 1
+    | equal?(u, 'D): 2
+    | equal?(u, 'W): 99
+    | equal?(u, 'H): 3
+    | equal?(u, 'Mi): 4
+    | equal?(u, 'S): 5
+
+// Iso8601Duration.parseComponents
+define parse-components(cs, acc, in-time, saw-t, last-rank, frac-seen):
+  cond:
+    | null?(cs): (list 'ok (reverse acc))
+    | frac-seen: (list 'error 'fractionNotOnLast)
+    | equal?(car(cs), #\T): cond:
+        | saw-t: (list 'error 'duplicateT)
+        | null?(cdr(cs)): (list 'error 'unexpectedEnd)
+        | else: parse-components(cdr(cs), acc, #t, #t, last-rank, #f)
+    | else: let*(tn: take-number(cs)):
+        cond:
+          | equal?(car(tn), 'error): tn
+          | null?(car(cdr(cdr(cdr(tn))))): (list 'error 'invalidNumber)
+          | else: let*(whole: car(cdr(tn)), milli: car(cdr(cdr(tn))), rest-with-unit: car(cdr(cdr(cdr(tn)))), unit-c: car(rest-with-unit), rest2: cdr(rest-with-unit)):
+              cond:
+                | (and (equal? unit-c #\W) (or (pair? acc) in-time)): (list 'error 'mixedBasicExtended)
+                | (list-any (lambda (dc) (equal? (dur-component-unit dc) 'W)) acc): (list 'error 'mixedBasicExtended)
+                | else: let*(u: classify-unit(in-time, unit-c)):
+                    cond:
+                      | u: let*(r: unit-rank(u)):
+                          cond:
+                            | <=(r, last-rank): (list 'error 'nonCanonicalOrder)
+                            | else: parse-components(rest2, cons(make-dur-component(u, whole, milli), acc), in-time, saw-t, r, not(=(milli, 0)))
+                      | else: let*(u2: cross-side-unit(in-time, unit-c)):
+                          cond:
+                            | u2: cond:
+                                | in-time: (list 'error 'dateAfterT)
+                                | else: (list 'error 'timeBeforeT)
+                            | else: (list 'error 'unexpectedToken)
+
+// Iso8601Duration.parse
+define parse(s):
+  let*(chars: string->list(s)):
+    cond:
+      | null?(chars): (list 'error 'empty)
+      | (and (equal? (car chars) #\P) (null? (cdr chars))): (list 'ok '())
+      | equal?(car(chars), #\P): parse-components(cdr(chars), '(), #f, #f, -1, #f)
+      | else: (list 'error 'expectedP)
+
+// Iso8601Duration.unitMilliseconds
+define unit-milliseconds(u):
+  cond:
+    | equal?(u, 'Y): *(365, 86400, 1000)
+    | equal?(u, 'Mo): *(30, 86400, 1000)
+    | equal?(u, 'W): *(7, 86400, 1000)
+    | equal?(u, 'D): *(86400, 1000)
+    | equal?(u, 'H): *(3600, 1000)
+    | equal?(u, 'Mi): *(60, 1000)
+    | equal?(u, 'S): 1000
+
+// Iso8601Duration.fracContribution
+define frac-contribution(u, frac-milli):
+  *(frac-milli, quotient(unit-milliseconds(u), 1000))
+
+// Iso8601Duration.totalMilliseconds
+define total-milliseconds(cs):
+  cond:
+    | null?(cs): 0
+    | else: let*(c: car(cs)):
+        +(*(dur-component-whole(c), unit-milliseconds(dur-component-unit(c))), frac-contribution(dur-component-unit(c), dur-component-frac-milli(c)), total-milliseconds(cdr(cs)))
+
+// Iso8601Duration.totalSeconds
+define total-seconds(cs):
+  quotient(total-milliseconds(cs), 1000)

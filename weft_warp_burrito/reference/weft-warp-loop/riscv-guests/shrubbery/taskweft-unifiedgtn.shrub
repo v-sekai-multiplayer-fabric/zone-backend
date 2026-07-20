@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 1 (part) of the full taskweft port: lean/Planner/UnifiedGTN.lean.
+// Its five theorems (planConstructionIsMonotonic,
+// allocNodeId_preserves_blacklist, nodeLifecycleStep_open,
+// nodeLifecycleStep_stable, replanOnlyEmitsNew) need no porting - proofs
+// about the two functions below, not new runtime code.
+//
+// SolutionNode fields (Types.lean, via taskweft-types.shrub's
+// define-record): node-id content status tag shadow-state
+// tried-methods-idx. RECTGTNNode/PlanElement are Types.lean's tagged
+// lists: (list 'task name params) etc. / (list 'action name params) etc.
+
+// UnifiedGTN.nodeLifecycleStep
+define node-lifecycle-step(n):
+  cond:
+    | equal?(solution-node-status(n), 'open): record-with(make-solution-node, '(node-id content status tag shadow-state tried-methods-idx), n, (status 'closed), (tag "new"))
+    | else: n
+
+// UnifiedGTN.extractPlan - filterMap over tree.nodes: "new"-tagged nodes
+// whose content is a .task become PlanElement .action entries; anything
+// else (goal_geq/verify_goal content, or non-"new" tag) is dropped.
+define extract-plan-loop(nodes):
+  cond:
+    | null?(nodes): '()
+    | else: let*(n: car(nodes), rest: extract-plan-loop(cdr(nodes))):
+        cond:
+          | (and (equal? (solution-node-tag n) "new") (equal? (car (solution-node-content n)) 'task)): (cons (cons 'action (cdr (solution-node-content n))) rest)
+          | else: rest
+
+define extract-plan(tree):
+  extract-plan-loop(solution-tree-nodes(tree))

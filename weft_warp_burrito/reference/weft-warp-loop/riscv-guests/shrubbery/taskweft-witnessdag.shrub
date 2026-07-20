@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 5 of the full taskweft port: lean/Planner/WitnessDAG.lean's
+// escalation-ladder control flow, now portable on top of qc-fuzz.shrub
+// standing in for the vendored Plausible library (supersedes ADR 0043,
+// which skipped this file - see the new ADR accompanying this commit
+// for why that's no longer the right call).
+//
+// Level (idx, walk-steps, fin-bound, num-inst) mirrors WitnessDAG's own
+// defaultLadder record shape exactly (values: idx0/256/256/200,
+// idx1/2000/1024/800, idx2/16000/4096/2000 - "larger walk steps than
+// the library default because HTN domains need more exploration",
+// per the Lean source's own doc comment).
+//
+// certify-witness-loop replicates certifyWitness's real control flow
+// precisely: at each unresolved rung, if readback reports found, stop
+// and report found; else if qc-certify finds a witness candidate, stop
+// and report provablyNone (bool result = outcome != provablyNone =
+// #f); else budgetHit - continue to the next rung, or if this was the
+// last rung, stop and report budgetHit (bool result = #t, since
+// budgetHit != provablyNone). One real, deliberate deviation from the
+// Lean source: certifyWitness's seed for the *next* rung is implicit
+// (Plausible manages its own RNG state internally, via the process-
+// global IO.stdGenRef every certify call mutates in place); here the
+// seed is threaded explicitly and advanced once per rung via
+// qc-next-seed, since this port has no hidden global RNG state to
+// depend on - determinism requires the caller to see exactly what
+// seed produced what result.
+
+define-record(level, idx, walk-steps, fin-bound, num-inst)
+
+define default-ladder():
+  (list (make-level 0 256 256 200) (make-level 1 2000 1024 800) (make-level 2 16000 4096 2000))
+
+define certify-witness-loop(candidate-is-witness, readback, levels, seed):
+  let*(lvl: car(levels), idx: level-idx(lvl), fin-bound: level-fin-bound(lvl), num-inst: level-num-inst(lvl), rb: readback(level-walk-steps(lvl)), cert: qc-certify((lambda (w) (candidate-is-witness lvl w)), fin-bound, num-inst, seed)):
+    cond:
+      | readback-found(rb): (list #t idx (list "htn-planner-witness" idx (list 'found (readback-witness-idx rb))))
+      | cert: (list #f idx (list "htn-planner-witness" idx 'provablyNone))
+      | null?(cdr(levels)): (list #t idx (list "htn-planner-witness" idx 'budgetHit))
+      | else: certify-witness-loop(candidate-is-witness, readback, cdr(levels), qc-next-seed(seed))
+
+define certify-witness(candidate-is-witness, readback, levels, seed):
+  certify-witness-loop(candidate-is-witness, readback, levels, seed)
+
+// WitnessDAG's own defaultCandidateIsWitness/defaultReadback stubs -
+// ported as-is (they are genuinely placeholders in the Lean source
+// too, "domain-specific implementations override this").
+define default-candidate-is-witness(lvl, i):
+  #f
+
+define-record(readback, value, found, witness-idx, budget-hit)
+
+define default-readback(steps):
+  (make-readback (list) #f 0 #f)
+
+define run-witness-oracle(seed):
+  certify-witness(default-candidate-is-witness, default-readback, default-ladder(), seed)

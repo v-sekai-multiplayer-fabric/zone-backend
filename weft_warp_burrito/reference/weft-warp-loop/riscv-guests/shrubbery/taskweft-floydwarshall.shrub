@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 2 (part) of the full taskweft port: lean/Planner/FloydWarshall.lean.
+// Its theorems (negCycleIff, cycleNodesSound, both smoke tests,
+// fwStep_le_direct, fwStep_le_two_hop, foldl_fwStep_le, run_le_direct)
+// need no porting - proofs about the two functions below.
+//
+// Lean's `d : Nat -> Nat -> Int` distance "matrix" is a function, not an
+// array - ported directly as a Scheme closure (a 2-argument lambda),
+// the same representation choice HRR/Basic.lean's PhaseVec will need
+// (Layer 4) for the same reason: no array needed when the source itself
+// never indexes into one, just applies the function.
+
+// `any`/`filterMap` are not s7 builtins in this build - defined locally,
+// matching every other layer's own self-contained convention (no shared
+// prelude/load mechanism inside the guest).
+define list-any(pred, lst):
+  cond:
+    | null?(lst): #f
+    | pred(car(lst)): #t
+    | else: list-any(pred, cdr(lst))
+
+define filter-map(f, lst):
+  cond:
+    | null?(lst): '()
+    | else: let*(r: f(car(lst))):
+        cond:
+          | r: cons(r, filter-map(f, cdr(lst)))
+          | else: filter-map(f, cdr(lst))
+
+define range-loop(i, n, acc):
+  cond:
+    | >=(i, n): reverse(acc)
+    | else: range-loop(+(i, 1), n, cons(i, acc))
+
+define range(n):
+  range-loop(0, n, '())
+
+define-record(fw-result, dist, has-negative-cycle, negative-cycle-nodes)
+
+// FloydWarshall.fwStep - d and the return value are both Nat -> Nat -> Int
+// closures, matching the Lean source's own function-valued distance map.
+define fw-step(k, d):
+  (lambda (i j) (min (d i j) (+ (d i k) (d k j))))
+
+// FloydWarshall.run
+define fw-run-fold(ks, d):
+  cond:
+    | null?(ks): d
+    | else: fw-run-fold(cdr(ks), fw-step(car(ks), d))
+
+define fw-run(n, g):
+  let*(ks: range(n), d: fw-run-fold(ks, g), has-cycle: list-any((lambda (i) (< (d i i) 0)), ks), cycle-nodes: filter-map((lambda (i) (if (< (d i i) 0) (cons i i) #f)), ks)):
+    make-fw-result(d, has-cycle, cycle-nodes)

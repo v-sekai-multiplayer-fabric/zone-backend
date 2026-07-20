@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 1 (part) of the full taskweft port: lean/Planner/Commands.lean.
+// PlanElement is Types.lean's tagged inductive - reused here as
+// (list 'action name params) / (list 'command name params), matching
+// taskweft-types.shrub's own convention.
+//
+// executeECTGTNCommand is, in the real Lean source, an IO-effecting
+// stub explicitly documented as "logs unknown commands - real
+// implementations are external" - it has no actual dispatch logic to
+// preserve. Ported as a pure function returning a descriptive tag
+// instead of performing IO, matching this repo's own no-side-effects-
+// in-interpreted-content principle (ADR 0006/0029) - a real, deliberate
+// substitution, not an oversight.
+
+define manifold-merge-name():
+  "manifold-merge"
+
+define planner-smoke-name():
+  "planner-smoke"
+
+define manifold-merge-cmd(params):
+  list('command, manifold-merge-name(), params)
+
+define planner-smoke-cmd():
+  list('command, planner-smoke-name(), '())
+
+// Types.Commands.executeECTGTNCommand, substituting a returned tag for
+// the original's IO.println stub (see header comment).
+define execute-ectgtn-command(elt):
+  cond:
+    | equal?(car(elt), 'command): list('unhandled-command, car(cdr(elt)))
+    | equal?(car(elt), 'action): list('action-not-executable, car(cdr(elt)))
+    | else: list('unknown-plan-element)
+
+define execute-plan(plan):
+  cond:
+    | null?(plan): '()
+    | else: cons(execute-ectgtn-command(car(plan)), execute-plan(cdr(plan)))

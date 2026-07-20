@@ -1,0 +1,86 @@
+{
+  "@context": {
+    "khr": "https://registry.khronos.org/glTF/extensions/2.0/KHR_interactivity/",
+    "domain": "khr:planning/domain/"
+  },
+  "@type": "domain:Definition",
+  "name": "skill_allocation",
+  "description": "Skill allocation and job assignment planning domain. Assigns service jobs to a pre-selected engineer per job, training them on the required skill first if they don't already have it. training_used counts how many trainings that costs (objective to minimize). Per-instance data (engineer skills, job requirements) is supplied entirely by the paired problem document.",
+  "version": "2.0",
+  "variables": [
+    {
+      "name": "engineer_has_skill",
+      "type": "bool",
+      "description": "Per (engineer,skill) pair, compound-keyed as \"{engineer_id}_{skill_id}\". A flat bool fluent rather than a ReBAC capability, since training grants it at plan time. Only true entries need to be listed."
+    },
+    {
+      "name": "job_skill_required",
+      "type": "ref",
+      "description": "job_id -> the one skill_id it requires. Supplied entirely by the problem."
+    },
+    {
+      "name": "allocations",
+      "type": "ref",
+      "description": "job_id -> engineer_id, filled in as jobs are allocated. Starts empty."
+    },
+    {
+      "name": "training_used",
+      "type": "int",
+      "description": "Count of trainings performed (objective to minimize). Keyed under a fixed \"total\" entry rather than a bare scalar init, matching every other bundled domain's convention.",
+      "init": { "total": 0 }
+    }
+  ],
+  "actions": {
+    "assign_job": {
+      "params": ["job_id", "engineer_id"],
+      "description": "Record job_id as assigned to engineer_id (allocate_job's alternatives have already confirmed engineer_id is qualified).",
+      "body": [{ "pointer/set": "/allocations/{job_id}", "value": "{engineer_id}" }]
+    },
+    "train_engineer": {
+      "params": ["engineer_id", "job_id"],
+      "description": "Train engineer_id on whichever skill job_id requires, then bump the training-used counter.",
+      "bind": [{ "name": "skill", "pointer": "/job_skill_required/{job_id}" }],
+      "body": [
+        { "pointer/set": "/engineer_has_skill/{engineer_id}_{skill}", "value": true },
+        {
+          "pointer/set": "/training_used/total",
+          "value": {
+            "type": "math/add",
+            "a": { "type": "pointer/get", "pointer": "/training_used/total" },
+            "b": 1
+          }
+        }
+      ]
+    }
+  },
+  "methods": {
+    "allocate_job": {
+      "params": ["job_id", "engineer_id"],
+      "description": "Assign job_id to engineer_id directly if already qualified, otherwise train first. engineer_id is chosen by the problem's todo_list (round-robin over the roster), not searched for here.",
+      "alternatives": [
+        {
+          "name": "assign_to_qualified",
+          "bind": [{ "name": "skill", "pointer": "/job_skill_required/{job_id}" }],
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": { "type": "pointer/get", "pointer": "/engineer_has_skill/{engineer_id}_{skill}" },
+                "b": true
+              }
+            }
+          ],
+          "subtasks": [["assign_job", "{job_id}", "{engineer_id}"]]
+        },
+        {
+          "name": "train_and_assign",
+          "description": "Fallback when assign_to_qualified's check doesn't match -- engineer_id doesn't have the skill yet.",
+          "subtasks": [
+            ["train_engineer", "{engineer_id}", "{job_id}"],
+            ["assign_job", "{job_id}", "{engineer_id}"]
+          ]
+        }
+      ]
+    }
+  }
+}

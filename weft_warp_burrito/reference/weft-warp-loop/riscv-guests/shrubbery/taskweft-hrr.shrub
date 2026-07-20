@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 4 of the full taskweft port: lean/HRR/Basic.lean. pointwiseEq
+// (a Prop) needs no porting. HRR/Properties.lean has zero defs (all
+// theorems about these operations) - nothing to port there at all.
+//
+// PhaseVec d := Fin d -> Int is a function-valued "vector", not an
+// array - ported as a genuine Scheme closure (a 1-argument lambda from
+// index to integer), matching the same representation choice already
+// proven for FloydWarshall's Nat -> Nat -> Int distance matrix
+// (Layer 2/ADR 0039). bind/unbind are confirmed (by direct read of the
+// Lean source) to be plain pointwise integer +/- - no circular
+// convolution, no floats, no FFT, no cross-platform determinism risk
+// at all (ADR 0026/0027's original HRR risk assessment, before the
+// source was actually read, turned out to be unfounded).
+
+// HRR.bind
+define hrr-bind(a, b):
+  (lambda (i) (+ (a i) (b i)))
+
+// HRR.unbind
+define hrr-unbind(memory, key):
+  (lambda (i) (- (memory i) (key i)))
+
+// HRR.encodeFact
+define hrr-encode-fact(content, entity):
+  hrr-bind(content, entity)
+
+// HRR.zero
+define hrr-zero():
+  (lambda (i) 0)
+
+// HRR.neg
+define hrr-neg(a):
+  (lambda (i) (- (a i)))
+
+// HRR.bundle
+define hrr-bundle(a, b):
+  (lambda (i) (+ (a i) (b i)))
+
+// HRR.diff
+define hrr-diff(a, b):
+  (lambda (i) (- (a i) (b i)))

@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 1 (part) of the full taskweft port: lean/Planner/ReentrantPlanner.lean.
+// Its three theorems (verifiedPrefixConsistent, replanClearsFailure,
+// replanPreservesVerified) need no porting - proofs about the two
+// functions below, not new runtime code.
+
+define-record(plan-solution-tree, complete-tree, failure-node, recovery-point, verified)
+
+// ReentrantPlanner.markVerified
+define mark-verified(st, node-id):
+  record-with(make-plan-solution-tree, '(complete-tree failure-node recovery-point verified), st, (verified (append (plan-solution-tree-verified st) (list node-id))))
+
+// ReentrantPlanner.replan
+define replan(st, new-tree):
+  record-with(make-plan-solution-tree, '(complete-tree failure-node recovery-point verified), st, (complete-tree new-tree), (failure-node #f))

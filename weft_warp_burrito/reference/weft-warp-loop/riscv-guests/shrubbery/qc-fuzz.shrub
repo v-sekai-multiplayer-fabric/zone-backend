@@ -1,0 +1,99 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// A faithful port of Plausible's real property-testing algorithm (the
+// Lean library leanprover-community/plausible, pinned by
+// fire/plausible-witness-dag's own lake-manifest.json at commit
+// a456461b368b71d2accd95234832cd9c174b5437) - not the earlier
+// stand-in xorshift32 sampler this file used to contain. Ported after
+// a full read of the real source (Plausible/Testable.lean,
+// Plausible/Arbitrary.lean, Plausible/Random.lean, and Lean core's own
+// Init/Data/Random.lean - StdGen itself lives there, not in Plausible):
+//
+// - qc-std-gen is Lean core's StdGen: L'Ecuyer's 1988 combined
+//   multiplicative-congruential generator, two independent 31-bit-ish
+//   LCG substreams (moduli 2147483563 and 2147483399) combined by
+//   subtraction. The constants below match Init/Data/Random.lean's
+//   stdNext verbatim - this is Lean's own StdGen, hand-translated, not
+//   a generator this port invented.
+// - qc-rand-nat mirrors randNat's real range-reduction: not a plain
+//   modulo of one PRNG output, but an accumulator that folds in
+//   consecutive stdNext draws until enough entropy has accumulated
+//   (target magnitude k*1000) before reducing mod k - for every
+//   fin-bound this port actually uses (256/1024/4096), this still
+//   terminates after exactly one stdNext call, but the loop is real,
+//   not assumed away.
+// - qc-run-trials mirrors Testable.runSuiteAux/varTestable.run's real
+//   per-trial size scaling: trial i (0-indexed) samples from
+//   [0, min(i*maxSize/numInst, finBound-1)], not the full range -
+//   size 0 at the first trial, growing toward maxSize (Plausible's
+//   own default, 100, kept as-is here) by the last one. This is a
+//   real, load-bearing detail: Plausible's own default Configuration
+//   (which plausible-witness-dag's certify uses unmodified) means
+//   candidates above ~99 are never sampled at all for fin-bound
+//   1024/4096 - a genuine gap in the upstream library this port
+//   inherits faithfully rather than silently fixing.
+// - Deliberately NOT ported: Shrinkable/minimization (only affects
+//   which counterexample gets reported after a failure is already
+//   found, never whether isFailure is true - certify only reads the
+//   boolean), and gaveUp/numRetries (structurally unreachable for the
+//   exact "forall w : Fin N, decidable-predicate w" proposition shape
+//   plausible-witness-dag actually uses - Arbitrary.arbitrary for
+//   Fin/Nat never raises GenError).
+// - Seed handling: real Plausible defaults to no explicit seed, which
+//   means process-global OS-entropy-seeded mutable state
+//   (IO.stdGenRef) - genuinely non-deterministic across runs, by
+//   Plausible's own doc comment. There is nothing to "faithfully port"
+//   for that path; a caller-supplied seed (qc-mk-std-gen) is the only
+//   reproducible mode real Plausible has, and it's the only mode this
+//   port implements.
+
+define qc-mk-std-gen(seed):
+  let*(q: quotient(seed, 2147483562), s1: modulo(seed, 2147483562), s2: modulo(q, 2147483398)):
+    list(+(s1, 1), +(s2, 1))
+
+define qc-std-next(gen):
+  let*(s1: car(gen), s2: cadr(gen), k1: quotient(s1, 53668), s1a: -(*(40014, -(s1, *(k1, 53668))), *(k1, 12211)), s1pp: if(<(s1a, 0), +(s1a, 2147483563), s1a), k2: quotient(s2, 52774), s2a: -(*(40692, -(s2, *(k2, 52774))), *(k2, 3791)), s2pp: if(<(s2a, 0), +(s2a, 2147483399), s2a), z: -(s1pp, s2pp), zprime: if(<(z, 1), +(z, 2147483562), modulo(z, 2147483562))):
+    list(zprime, list(s1pp, s2pp))
+
+define qc-rand-nat-loop(remaining, v, gen):
+  cond:
+    | =(remaining, 0): list(v, gen)
+    | else: let*(step: qc-std-next(gen), x: car(step), gen2: cadr(step), v2: +(*(v, 2147483562), -(x, 1)), next-remaining: max(0, -(quotient(remaining, 2147483562), 1))):
+        qc-rand-nat-loop(next-remaining, v2, gen2)
+
+define qc-rand-nat(gen, lo, hi):
+  let*(lo2: min(lo, hi), hi2: max(lo, hi), k: +(-(hi2, lo2), 1), tgt-mag: *(k, 1000), result: qc-rand-nat-loop(tgt-mag, 0, gen), v: car(result), gen2: cadr(result)):
+    list(+(lo2, modulo(v, k)), gen2)
+
+// Plausible's own Configuration.maxSize default (Testable.lean) - kept
+// as this port's default too, per this file's own header comment on
+// why that specifically matters.
+define qc-default-max-size():
+  100
+
+define qc-run-trials(candidate-is-witness, fin-bound, num-inst, max-size, i, gen):
+  cond:
+    | >=(i, num-inst): #f
+    | else: let*(size-i: quotient(*(i, max-size), num-inst), hi-i: min(size-i, -(fin-bound, 1)), sample: qc-rand-nat(gen, 0, hi-i), w: car(sample), gen2: cadr(sample)):
+        cond:
+          | candidate-is-witness(w): w
+          | else: qc-run-trials(candidate-is-witness, fin-bound, num-inst, max-size, +(i, 1), gen2)
+
+// A small seed-advancement helper for callers (like
+// taskweft-witnessdag.shrub's certify-witness-loop) that need a fresh
+// deterministic seed for a subsequent, independent qc-certify call -
+// this port has no global mutable RNG state to continue implicitly
+// the way real Plausible's IO.stdGenRef does across calls in one
+// process, so the seed for "the next rung" has to be derived
+// explicitly instead.
+define qc-next-seed(seed):
+  car(qc-std-next(qc-mk-std-gen(seed)))
+
+// certify's replacement: true means a counterexample to
+// "for all w, not (candidate-is-witness w)" was found within the
+// budget - i.e. a witness candidate exists in [0, fin-bound), found by
+// the real Plausible sampling algorithm above, not proof.
+define qc-certify(candidate-is-witness, fin-bound, num-inst, seed):
+  let*(gen0: qc-mk-std-gen(seed)):
+    if(qc-run-trials(candidate-is-witness, fin-bound, num-inst, qc-default-max-size(), 0, gen0), #t, #f)

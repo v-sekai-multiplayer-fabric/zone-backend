@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 2 (part) of the full taskweft port: lean/Planner/ReBACGoal.lean.
+// Its many theorems (uniSatisfied_base_direct, uniSatisfied_union_left,
+// multiSatisfied_iff, the fuel-monotonicity family, etc.) need no
+// porting - proofs about the two functions below. Depends on
+// check-relation-expr, already ported in taskweft-capabilities.shrub -
+// concatenate that file first when using this one.
+
+define-record(uni-goal, subj, expr, obj)
+
+// ReBACGoal.uniSatisfied
+define uni-satisfied(graph, fuel, g):
+  check-relation-expr(graph, uni-goal-subj(g), uni-goal-expr(g), uni-goal-obj(g), fuel)
+
+define list-all(pred, lst):
+  cond:
+    | null?(lst): #t
+    | pred(car(lst)): list-all(pred, cdr(lst))
+    | else: #f
+
+// ReBACGoal.multiSatisfied
+define multi-satisfied(graph, fuel, gs):
+  list-all((lambda (g) (uni-satisfied graph fuel g)), gs)

@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Shrubbery-lite source for riscv-guests/content/loot.scm's logic -
+// proves the reader (shrubbery_to_scheme.py) on real content, not a toy
+// example. Same upstream source as loot.scm (v-sekai-multiplayer-fabric/loot
+// commit 6c4439441c7ea9ef24b80fc68b6486e97219285b), written without
+// visible parentheses, per ADR 0006's original decision.
+
+define u32(x):
+  logand(x, #xFFFFFFFF)
+
+define xorshift32-next32(s0):
+  let*(s1: u32(logxor(s0, u32(ash(s0, 13)))), s2: u32(logxor(s1, ash(s1, -17))), s3: u32(logxor(s2, u32(ash(s2, 5))))):
+    s3
+
+define rng-range(seed, bound):
+  cond:
+    | =(bound, 0): 0
+    | else: modulo(xorshift32-next32(seed), bound)
+
+define total-weight-loop(t, acc):
+  cond:
+    | null?(t): acc
+    | else: total-weight-loop(cdr(t), +(acc, cdr(car(t))))
+
+define total-weight(table):
+  total-weight-loop(table, 0)
+
+define pick(table, r, acc):
+  cond:
+    | null?(table): 0
+    | else: let*(entry: car(table), item: car(entry), w: cdr(entry), new-acc: +(acc, w)):
+        cond:
+          | <(r, new-acc): item
+          | else: pick(cdr(table), r, new-acc)
+
+define loot-roll(seed, table):
+  let*(tot: total-weight(table)):
+    cond:
+      | =(tot, 0): 0
+      | else: pick(table, rng-range(seed, tot), 0)

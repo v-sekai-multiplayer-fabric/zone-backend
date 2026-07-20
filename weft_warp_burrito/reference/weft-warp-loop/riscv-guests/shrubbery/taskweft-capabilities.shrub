@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 2 (part) of the full taskweft port: lean/Planner/Capabilities.lean.
+// OwnershipImpliesControlAxiom (a Prop) and its theorems
+// (ownershipImpliesControl, memberInheritsCapability, unionMonotonicity,
+// intersectionSubsetLeft, tupleToUsersetGeneralizesMembership,
+// expandSoundness) need no porting - proofs about the five functions
+// below, not new runtime code.
+//
+// RelationType (Types.lean, no payload data) is represented as plain
+// symbols: 'OWNS 'CONTROLS 'DELEGATED_TO 'HAS_CAPABILITY 'IS_MEMBER_OF
+// 'SUPERVISOR_OF 'PARTNER_OF 'IS_A - the same convention Layer 0
+// established for zero-payload inductives (NodeStatus), just not
+// exercised with concrete values until this layer actually constructs
+// and compares them.
+
+// `filter`/`any`/`filterMap`/`eraseDups` are not s7 builtins in this
+// build (filter already confirmed missing; the others unconfirmed and
+// not risked) - defined locally.
+define filter(pred, lst):
+  cond:
+    | null?(lst): '()
+    | pred(car(lst)): cons(car(lst), filter(pred, cdr(lst)))
+    | else: filter(pred, cdr(lst))
+
+define list-any(pred, lst):
+  cond:
+    | null?(lst): #f
+    | pred(car(lst)): #t
+    | else: list-any(pred, cdr(lst))
+
+define filter-map(f, lst):
+  cond:
+    | null?(lst): '()
+    | else: let*(r: f(car(lst))):
+        cond:
+          | r: cons(r, filter-map(f, cdr(lst)))
+          | else: filter-map(f, cdr(lst))
+
+define erase-dups-loop(lst, seen):
+  cond:
+    | null?(lst): '()
+    | member(car(lst), seen): erase-dups-loop(cdr(lst), seen)
+    | else: cons(car(lst), erase-dups-loop(cdr(lst), cons(car(lst), seen)))
+
+define erase-dups(lst):
+  erase-dups-loop(lst, '())
+
+// Capabilities.hasCapability
+define has-capability(graph, subj, rel, obj, fuel):
+  cond:
+    | =(fuel, 0): #f
+    | else: let*(n: -(fuel, 1)):
+        (or (list-any (lambda (r) (equal? r (make-relationship subj rel obj))) graph) (list-any (lambda (r) (and (equal? (relationship-subject r) subj) (equal? (relationship-relation r) 'IS_MEMBER_OF) (has-capability graph (relationship-object r) rel obj n))) graph) (list-any (lambda (r) (and (equal? (relationship-object r) subj) (equal? (relationship-relation r) 'DELEGATED_TO) (equal? (relationship-subject r) obj) (equal? rel 'CONTROLS))) graph))
+
+define-record(capability-state, graph, current-time)
+
+// Capabilities.hasCapabilityString
+define has-capability-string(state, subj, action, obj, fuel):
+  cond:
+    | equal?(action, "own"): has-capability(capability-state-graph(state), subj, 'OWNS, obj, fuel)
+    | equal?(action, "control"): has-capability(capability-state-graph(state), subj, 'CONTROLS, obj, fuel)
+    | equal?(action, "delegate"): has-capability(capability-state-graph(state), subj, 'DELEGATED_TO, obj, fuel)
+    | equal?(action, "capability"): has-capability(capability-state-graph(state), subj, 'HAS_CAPABILITY, obj, fuel)
+    | equal?(action, "member"): has-capability(capability-state-graph(state), subj, 'IS_MEMBER_OF, obj, fuel)
+    | equal?(action, "supervisor"): has-capability(capability-state-graph(state), subj, 'SUPERVISOR_OF, obj, fuel)
+    | equal?(action, "partner"): has-capability(capability-state-graph(state), subj, 'PARTNER_OF, obj, fuel)
+    | equal?(action, "be"): has-capability(capability-state-graph(state), subj, 'IS_A, obj, fuel)
+    | else: #f
+
+// ReBACState (Lean's `extends CapabilityState`, flattened here to three
+// fields rather than a nested/inherited representation - no Scheme
+// equivalent to Lean structure extension needed, the fields are just
+// listed together).
+define-record(rebac-state, graph, current-time, definitions)
+
+// Capabilities.checkRelationExpr - expr is Types.lean's RelationExpr
+// tagged list: (base rel) (union a b) (intersection a b) (difference a b)
+// (tupleToUserset pivotRel inner).
+define check-relation-expr(graph, subj, expr, obj, fuel):
+  cond:
+    | =(fuel, 0): #f
+    | else: let*(n: -(fuel, 1), tag: car(expr)):
+        cond:
+          | equal?(tag, 'base): has-capability(graph, subj, car(cdr(expr)), obj, n)
+          | equal?(tag, 'union): (or (check-relation-expr graph subj (car (cdr expr)) obj n) (check-relation-expr graph subj (car (cdr (cdr expr))) obj n))
+          | equal?(tag, 'intersection): (and (check-relation-expr graph subj (car (cdr expr)) obj n) (check-relation-expr graph subj (car (cdr (cdr expr))) obj n))
+          | equal?(tag, 'difference): (and (check-relation-expr graph subj (car (cdr expr)) obj n) (not (check-relation-expr graph subj (car (cdr (cdr expr))) obj n)))
+          | equal?(tag, 'tupleToUserset): let*(pivot-rel: car(cdr(expr)), inner: car(cdr(cdr(expr)))):
+              (list-any (lambda (r) (and (equal? (relationship-subject r) subj) (equal? (relationship-relation r) pivot-rel) (check-relation-expr graph (relationship-object r) inner obj n))) graph)
+          | else: #f
+
+// Capabilities.expand
+define expand(graph, rel, obj, fuel):
+  let*(direct: filter-map((lambda (r) (if (and (equal? (relationship-relation r) rel) (equal? (relationship-object r) obj)) (relationship-subject r) #f)), graph), inherited: filter-map((lambda (r) (if (and (equal? (relationship-relation r) 'IS_MEMBER_OF) (has-capability graph (relationship-object r) rel obj fuel)) (relationship-subject r) #f)), graph)):
+    erase-dups(append(direct, inherited))
+
+// Capabilities.hasCapabilityReBAC - definitions is an alist of
+// (action-string . RelationExpr).
+define has-capability-rebac(state, subj, action, obj, fuel):
+  let*(entry: assoc(action, rebac-state-definitions(state))):
+    cond:
+      | entry: check-relation-expr(rebac-state-graph(state), subj, cdr(entry), obj, fuel)
+      | else: has-capability-string(make-capability-state(rebac-state-graph(state), rebac-state-current-time(state)), subj, action, obj, fuel)

@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 K. S. Ernest (iFire) Lee
+//
+// Layer 0 of the full taskweft port: taskweft/taskweft's
+// lean/Planner/Types.lean, ported operational-definitions-only (per
+// ADR 0035's discipline - theorems about these types, idMonotonicity/
+// pruningDecreasesSize/blacklistPersistence, need no porting; they
+// prove properties of the three functions below, not new runtime code).
+//
+// Real finding while porting: taskweft's current planner architecture
+// is an equality-saturation/e-graph-based SolutionTree (node pruning,
+// blacklisting, shadow-states, EClass/ENode storage) - not the simpler
+// GTPyHOP-style backtracking find_plan taskweft-lite.shrub already
+// ported from docs/rectgtn.md's own description. Both are real and
+// both get ported; this layer follows Types.lean exactly as written,
+// not the doc's simplified account.
+//
+// Representation conventions (consistent with taskweft-lite.shrub and
+// record-macros.scm): Lean inductives with no payload data (RelationType,
+// NodeStatus) become plain symbols; inductives with payload (RelationExpr,
+// PlanElement, RECTGTNNode, TemporalConstraint, PlanTree) become tagged
+// lists (list 'tag arg...); structures become define-record vectors, via
+// this file's own define-record calls below (no separate wrapper
+// constructors - make-X from define-record is used directly everywhere
+// else in this port). SolutionTree.is_tree (a Prop) is proof-only and
+// carries no runtime data in Lean itself - correctly omitted here, not
+// an oversight.
+
+// `filter` is not a builtin in this s7 build (ADR 0031's finding,
+// confirmed again here) - defined locally rather than assumed.
+define filter(pred, lst):
+  cond:
+    | null?(lst): '()
+    | pred(car(lst)): cons(car(lst), filter(pred, cdr(lst)))
+    | else: filter(pred, cdr(lst))
+
+define-record(relationship, subject, relation, object)
+define-record(action-model, success-prob, cost)
+define-record(state-var, id, val)
+define-record(timeline-entry, action-id, start-time, end-time)
+define-record(eclass, parent, nodes)
+define-record(plan-state, executable, metadata, failed, paused-at, prev-tree, current-time, vars, history-timeline, current-blacklist, next-node-id, e-classes)
+define-record(solution-node, node-id, content, status, tag, shadow-state, tried-methods-idx)
+define-record(solution-tree, nodes, edges)
+
+// Types.pruneNode: drop a node (and any edge touching it) from a
+// SolutionTree by node_id.
+define prune-node(tree, target-id):
+  (let* ((remaining-nodes (filter (lambda (n) (not (= (solution-node-node-id n) target-id))) (solution-tree-nodes tree))) (remaining-edges (filter (lambda (e) (and (not (= (car e) target-id)) (not (= (cdr e) target-id)))) (solution-tree-edges tree)))) (record-with make-solution-tree '(nodes edges) tree (nodes remaining-nodes) (edges remaining-edges)))
+
+// Types.allocNodeId: bump the counter, return (new-state . new-id).
+define alloc-node-id(st):
+  let*(new-id: plan-state-next-node-id(st)):
+    cons(record-with(make-plan-state, '(executable metadata failed paused-at prev-tree current-time vars history-timeline current-blacklist next-node-id e-classes), st, (next-node-id (+ new-id 1))), new-id)
+
+// Types.addToBlacklist: prepend, matching Lean's `e :: st.current_blacklist`.
+define add-to-blacklist(st, e):
+  record-with(make-plan-state, '(executable metadata failed paused-at prev-tree current-time vars history-timeline current-blacklist next-node-id e-classes), st, (current-blacklist (cons e (plan-state-current-blacklist st))))

@@ -1,0 +1,32 @@
+{
+  "name": "weft-warp-loop-flow-runtime",
+  "version": "0.1.0",
+  "dependencies": [
+    "boost-asio",
+    "boost-bind",
+    "boost-algorithm",
+    "boost-format",
+    "boost-core",
+    "boost-unordered",
+    "boost-container",
+    "boost-preprocessor",
+    "boost-filesystem",
+    "boost-iostreams",
+    "boost-serialization",
+    "boost-program-options",
+    "boost-url",
+    {
+      "name": "boost-context",
+      "platform": "!windows"
+    },
+    "boost-random",
+    "boost-range",
+    "boost-intrusive",
+    "boost-lockfree",
+    "boost-system",
+    "boost-lexical-cast",
+    "boost-functional",
+    "openssl",
+    "fmt"
+  ]
+}
