@@ -2,10 +2,11 @@
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
 defmodule WeftWarpBurrito.SandboxNif do
   @moduledoc """
-  Raw erl_nif bindings for c_src/nif/weft_sandbox_nif.cpp. Not meant to
-  be called directly - see `WeftWarpBurrito.Sandbox`, the GenServer
-  actor that owns one Machine resource per process and is the actual
-  public API.
+  Fine (elixir-nx/fine) bindings for c_src/nif/weft_sandbox_nif.cpp -
+  see rfd/0003 for why Fine rather than hand-rolled erl_nif marshalling.
+  Not meant to be called directly - see `WeftWarpBurrito.Sandbox`, the
+  GenServer actor that owns one Machine resource per process and is the
+  actual public API.
 
   This module's only job is loading the compiled NIF; every function
   below is replaced by the native implementation once `on_load/0` runs

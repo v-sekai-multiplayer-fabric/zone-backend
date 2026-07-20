@@ -59,7 +59,7 @@ defmodule WeftWarpBurrito.Sandbox do
   def init(:ok) do
     elf_path = Path.join(:code.priv_dir(:weft_warp_burrito), "weft_guest.elf")
 
-    case WeftWarpBurrito.SandboxNif.new_sandbox_nif(String.to_charlist(elf_path)) do
+    case WeftWarpBurrito.SandboxNif.new_sandbox_nif(elf_path) do
       {:ok, resource} -> {:ok, %{resource: resource}}
       {:error, reason} -> {:stop, reason}
     end

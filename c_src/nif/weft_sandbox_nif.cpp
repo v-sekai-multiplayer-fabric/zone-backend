@@ -24,22 +24,28 @@
 // GenServer only ever runs one capability call at a time and is fully
 // idle (inspectable, restartable by its supervisor, free to process
 // other messages) between calls - "pause between gas-metered calls",
-// not "pause mid-instruction". If true mid-execution resumability is
-// ever needed, it requires guest-side cooperation (an explicit
-// step-function the guest yields from), not just a host-side change.
+// not "pause mid-instruction". See rfd/0002 for the true mid-execution
+// resume design this doesn't implement yet.
 //
-// Scheduling note: these are dirty NIFs (see nifFuncs below) - guest
-// execution is CPU-bound and fuel-bounded but not time-bounded, so it
-// must not run on a normal BEAM scheduler thread.
-#include <erl_nif.h>
+// Scheduling note: these are dirty NIFs (see the FINE_NIF flags
+// below) - guest execution is CPU-bound and fuel-bounded but not
+// time-bounded, so it must not run on a normal BEAM scheduler thread.
+//
+// Bindings use Fine (elixir-nx/fine) rather than hand-written erl_nif
+// argument/resource marshalling - see rfd/0003 for why: it reuses
+// libriscv/s7 as the guest execution substrate unchanged and only
+// replaces the binding-layer boilerplate (path/atom decoding, resource
+// type registration) with Fine's generated equivalent.
+#include <fine.hpp>
 
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <memory>
-#include <new>
 #include <sstream>
 #include <string>
+#include <tuple>
+#include <variant>
 #include <vector>
 
 #include <libriscv/machine.hpp>
@@ -53,23 +59,6 @@ struct GuestResult {
 	int64_t values[4];
 	int32_t count;
 };
-
-struct SandboxResource {
-	// Machine's constructor takes the ELF image as a view
-	// (std::string_view / span / const vector&), not an owned copy - it
-	// keeps pointers into this buffer for the Machine's whole lifetime
-	// (zero-copy ELF loading), so the bytes must outlive the Machine.
-	// Members destruct in reverse declaration order, so declaring
-	// elfBytes first means machine is destroyed first, elfBytes last.
-	std::vector<uint8_t> elfBytes;
-	std::unique_ptr<Machine64> machine;
-};
-
-ErlNifResourceType* g_sandboxResourceType = nullptr;
-
-void sandboxResourceDestructor(ErlNifEnv*, void* obj) {
-	static_cast<SandboxResource*>(obj)->~SandboxResource();
-}
 
 std::string readFile(const std::string& path) {
 	std::ifstream stream(path, std::ios::binary);
@@ -103,122 +92,102 @@ GuestResult callStruct(Machine64& machine, const char* funcName, uint64_t fuel) 
 	return *machine.memory.memarray<GuestResult>(retBufAddr, 1);
 }
 
-ERL_NIF_TERM makeErrorAtom(ErlNifEnv* env, const char* reason) {
-	return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_atom(env, reason));
-}
+} // namespace
+
+// One Machine per resource, constructed from a guest ELF path. Not in
+// the anonymous namespace above - FINE_RESOURCE needs external linkage
+// to register this type by name.
+class SandboxResource {
+public:
+	explicit SandboxResource(std::vector<uint8_t> elf) : elfBytes(std::move(elf)) {
+		machine = std::make_unique<Machine64>(
+			elfBytes, riscv::MachineOptions<riscv::RISCV64>{ .memory_max = 256UL << 20 });
+		machine->setup_linux({ "weft_guest" }, { "LC_ALL=C" });
+		machine->setup_linux_syscalls();
+		machine->simulate<true>(50'000'000ull); // guest_init(): loads loot/combat/progression content
+	}
+
+	// Machine's constructor takes the ELF image as a view
+	// (std::string_view / span / const vector&), not an owned copy - it
+	// keeps pointers into this buffer for the Machine's whole lifetime
+	// (zero-copy ELF loading), so the bytes must outlive the Machine.
+	// Members destruct in reverse declaration order, so declaring
+	// elfBytes first means machine is destroyed first, elfBytes last.
+	std::vector<uint8_t> elfBytes;
+	std::unique_ptr<Machine64> machine;
+};
+
+FINE_RESOURCE(SandboxResource);
+
+namespace {
 
 // Maps a libriscv MachineException to an Elixir-facing reason atom -
 // gas_exhausted is the one callers are expected to actually branch on
 // (it means "raise the fuel budget and retry"); everything else is a
 // real guest fault (illegal instruction, out-of-memory, etc.) that
 // retrying with more fuel will not fix.
-ERL_NIF_TERM machineExceptionToTerm(ErlNifEnv* env, const riscv::MachineException& e) {
+fine::Atom machineExceptionToAtom(const riscv::MachineException& e) {
 	if (dynamic_cast<const riscv::MachineTimeoutException*>(&e) != nullptr) {
-		return makeErrorAtom(env, "gas_exhausted");
+		return fine::Atom("gas_exhausted");
 	}
-	return makeErrorAtom(env, "guest_trap");
+	return fine::Atom("guest_trap");
 }
 
-ERL_NIF_TERM newSandbox(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-	if (argc != 1) return enif_make_badarg(env);
-
-	unsigned pathLen = 0;
-	if (!enif_get_list_length(env, argv[0], &pathLen)) return enif_make_badarg(env);
-	// buffer must hold pathLen characters plus enif_get_string's own
-	// trailing NUL - sizing it to exactly pathLen (as an earlier version
-	// of this function did) writes one byte past the buffer.
-	std::vector<char> pathBuf(pathLen + 1, '\0');
-	if (enif_get_string(env, argv[0], pathBuf.data(), pathBuf.size(), ERL_NIF_LATIN1) <= 0) {
-		return enif_make_badarg(env);
-	}
-	std::string path(pathBuf.data());
-
+// Loads guest ELF at `path`, running guest_init() once.
+std::variant<fine::Ok<fine::ResourcePtr<SandboxResource>>, fine::Error<fine::Atom>>
+new_sandbox_nif(ErlNifEnv*, std::string path) {
 	std::string fileContents = readFile(path);
 	if (fileContents.empty()) {
-		return makeErrorAtom(env, "guest_elf_not_found");
+		return fine::Error(fine::Atom("guest_elf_not_found"));
 	}
 
-	void* mem = enif_alloc_resource(g_sandboxResourceType, sizeof(SandboxResource));
-	auto* res = new (mem) SandboxResource();
-	// Stored on the resource (not a function-local) so it outlives this
-	// call - Machine only holds a view into it, per SandboxResource's
-	// own field-ordering comment above.
-	res->elfBytes.assign(fileContents.begin(), fileContents.end());
-
+	std::vector<uint8_t> elfBytes(fileContents.begin(), fileContents.end());
 	try {
-		res->machine = std::make_unique<Machine64>(
-			res->elfBytes, riscv::MachineOptions<riscv::RISCV64>{ .memory_max = 256UL << 20 });
-		res->machine->setup_linux({ "weft_guest" }, { "LC_ALL=C" });
-		res->machine->setup_linux_syscalls();
-		res->machine->simulate<true>(50'000'000ull); // guest_init(): loads loot/combat/progression content
+		return fine::Ok(fine::make_resource<SandboxResource>(std::move(elfBytes)));
 	} catch (const std::exception&) {
-		res->~SandboxResource();
-		enif_release_resource(mem);
-		return makeErrorAtom(env, "guest_init_failed");
+		return fine::Error(fine::Atom("guest_init_failed"));
 	}
-
-	ERL_NIF_TERM term = enif_make_resource(env, res);
-	enif_release_resource(res); // term now owns the reference
-	return enif_make_tuple2(env, enif_make_atom(env, "ok"), term);
 }
 
-ERL_NIF_TERM callCapability(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-	if (argc != 3) return enif_make_badarg(env);
+FINE_NIF(new_sandbox_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
-	SandboxResource* res = nullptr;
-	if (!enif_get_resource(env, argv[0], g_sandboxResourceType, reinterpret_cast<void**>(&res))) {
-		return enif_make_badarg(env);
-	}
-
-	char capabilityBuf[64];
-	if (enif_get_atom(env, argv[1], capabilityBuf, sizeof(capabilityBuf), ERL_NIF_LATIN1) <= 0) {
-		return enif_make_badarg(env);
-	}
-	std::string capability(capabilityBuf);
-
-	ErlNifUInt64 fuel = 0;
-	if (!enif_get_uint64(env, argv[2], &fuel)) return enif_make_badarg(env);
-
-	Machine64& machine = *res->machine;
+// Runs one fixed, named guest capability with a fuel (gas) budget.
+// `capability` is one of :loot_roll | :combat_replay | :progression_replay -
+// never an arbitrary caller-supplied symbol name (see this file's own
+// header comment for why: a generic "call this named guest symbol"
+// entry point would defeat the whole point of a closed capability set).
+//
+// Each capability's success shape is a different arity, so this
+// returns fine::Term directly (built by hand per branch) rather than a
+// single std::variant<Ok<...>, ...> alternative per capability, which
+// would need one variant arm per return shape for no real benefit.
+fine::Term call_capability_nif(
+	ErlNifEnv* env, fine::ResourcePtr<SandboxResource> resource, fine::Atom capability, uint64_t fuel) {
+	Machine64& machine = *resource->machine;
 
 	try {
 		if (capability == "loot_roll") {
 			int64_t result = callScalar(machine, "guest_loot_roll", fuel, 42);
-			return enif_make_tuple2(env, enif_make_atom(env, "ok"), enif_make_int64(env, result));
+			return fine::encode(env, fine::Ok(result));
 		}
 		if (capability == "combat_replay") {
 			GuestResult r = callStruct(machine, "guest_combat_replay", fuel);
-			return enif_make_tuple2(
-				env, enif_make_atom(env, "ok"),
-				enif_make_tuple3(env, enif_make_int64(env, r.values[0]), enif_make_int64(env, r.values[1]),
-					enif_make_int64(env, r.values[2])));
+			return fine::encode(env, fine::Ok(std::make_tuple(r.values[0], r.values[1], r.values[2])));
 		}
 		if (capability == "progression_replay") {
 			GuestResult r = callStruct(machine, "guest_progression_replay", fuel);
-			return enif_make_tuple2(
-				env, enif_make_atom(env, "ok"),
-				enif_make_tuple2(env, enif_make_int64(env, r.values[0]), enif_make_int64(env, r.values[1])));
+			return fine::encode(env, fine::Ok(std::make_tuple(r.values[0], r.values[1])));
 		}
-		return makeErrorAtom(env, "unknown_capability");
+		return fine::encode(env, fine::Error(fine::Atom("unknown_capability")));
 	} catch (const riscv::MachineException& e) {
-		return machineExceptionToTerm(env, e);
+		return fine::encode(env, fine::Error(machineExceptionToAtom(e)));
 	} catch (const std::exception&) {
-		return makeErrorAtom(env, "guest_trap");
+		return fine::encode(env, fine::Error(fine::Atom("guest_trap")));
 	}
 }
 
-int onLoad(ErlNifEnv* env, void**, ERL_NIF_TERM) {
-	ErlNifResourceFlags flags = static_cast<ErlNifResourceFlags>(ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER);
-	g_sandboxResourceType =
-		enif_open_resource_type(env, nullptr, "weft_sandbox", sandboxResourceDestructor, flags, nullptr);
-	return g_sandboxResourceType == nullptr ? -1 : 0;
-}
-
-ErlNifFunc nifFuncs[] = {
-	{"new_sandbox_nif", 1, newSandbox, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-	{"call_capability_nif", 3, callCapability, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-};
+FINE_NIF(call_capability_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 } // namespace
 
-ERL_NIF_INIT(Elixir.WeftWarpBurrito.SandboxNif, nifFuncs, onLoad, nullptr, nullptr, nullptr)
+FINE_INIT("Elixir.WeftWarpBurrito.SandboxNif");

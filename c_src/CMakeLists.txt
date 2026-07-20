@@ -36,7 +36,12 @@ target_link_libraries(verify_guest PRIVATE riscv)
 # dlopen/LoadLibrary and resolves nif_init from by symbol name.
 if(DEFINED ERTS_INCLUDE_DIR)
   add_library(weft_sandbox_nif SHARED nif/weft_sandbox_nif.cpp)
-  target_include_directories(weft_sandbox_nif PRIVATE ${ERTS_INCLUDE_DIR})
+  target_include_directories(weft_sandbox_nif PRIVATE ${ERTS_INCLUDE_DIR} ${FINE_INCLUDE_DIR})
   target_link_libraries(weft_sandbox_nif PRIVATE riscv)
   set_target_properties(weft_sandbox_nif PROPERTIES PREFIX "")
+  # Fine's own README: hides NIF symbols so this library doesn't clash
+  # with other Fine-based NIFs loaded into the same BEAM node.
+  if(NOT MSVC)
+    target_compile_options(weft_sandbox_nif PRIVATE -fvisibility=hidden)
+  endif()
 endif()

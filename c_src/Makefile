@@ -41,7 +41,7 @@ guest:
 		-o $(PRIV_DIR)/weft_guest.elf
 
 nif:
-	cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DERTS_INCLUDE_DIR="$(ERTS_INCLUDE_DIR)"
+	cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DERTS_INCLUDE_DIR="$(ERTS_INCLUDE_DIR)" -DFINE_INCLUDE_DIR="$(FINE_INCLUDE_DIR)"
 	cmake --build build --target weft_sandbox_nif
 	mkdir -p $(PRIV_DIR)
 	cp build/weft_sandbox_nif.dll $(PRIV_DIR)/weft_sandbox_nif.dll
