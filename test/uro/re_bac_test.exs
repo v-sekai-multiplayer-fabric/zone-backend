@@ -74,8 +74,12 @@ defmodule Uro.ReBACTest do
     test "has_map_upload_permission?/1 is false when the user has no matching edge", %{
       user: user
     } do
+      # The shared ruleset above has can_upload_avatars: true, so
+      # build_upload_permission_graph/2 still adds an avatar_uploaders edge
+      # even though this test is only checking the map_uploaders relation.
       Uro.ReBACMock
       |> expect(:new_graph, fn -> :graph end)
+      |> expect(:add_edge, fn :graph, _subj, "avatar_uploaders", "IS_MEMBER_OF" -> :graph end)
       |> expect(:check_rel, fn :graph, _subj, "IS_MEMBER_OF", "map_uploaders" -> false end)
 
       refute UserContentHelper.has_map_upload_permission?(user)
