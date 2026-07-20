@@ -48,12 +48,15 @@ defmodule Uro.ReBACTest do
       user = Repo.insert!(%Uro.Accounts.User{} |> cast(%{email: "uploader@test.test"}, [:email]))
 
       Repo.insert!(
-        Uro.Accounts.UserPrivilegeRuleset.changeset(%Uro.Accounts.UserPrivilegeRuleset{}, %{
-          user_id: user.id,
-          can_upload_avatars: true,
-          can_upload_maps: false,
-          can_upload_props: false
-        })
+        Uro.Accounts.UserPrivilegeRuleset.admin_changeset(
+          %Uro.Accounts.UserPrivilegeRuleset{},
+          %{
+            user_id: user.id,
+            can_upload_avatars: true,
+            can_upload_maps: false,
+            can_upload_props: false
+          }
+        )
       )
 
       %{user: user}
