@@ -29,8 +29,9 @@ defmodule Uro.Tagging do
     bundled =
       tag_map
       |> Enum.map(fn {dimension, value} -> Uro.Hrr.gen_atom(atom_seed(dimension, value)) end)
-      |> Enum.reduce(nil, fn atom, nil -> atom
-                             atom, acc -> Uro.Hrr.bundle(acc, atom)
+      |> Enum.reduce(nil, fn
+        atom, nil -> atom
+        atom, acc -> Uro.Hrr.bundle(acc, atom)
       end) || List.duplicate(0.0, Uro.Hrr.dim())
 
     attrs = %{

@@ -1,6 +1,6 @@
 ---
 authors: K. S. Ernest (iFire) Lee <ernest.lee@chibifire.com>
-state: published
+state: committed
 discussion: N/A — committed directly to main, no PR review
 labels: repo-structure
 ---
