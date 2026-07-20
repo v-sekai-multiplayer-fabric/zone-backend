@@ -78,9 +78,10 @@ defmodule Uro.MixProject do
       {:scrivener_ecto, "~> 3.1"},
       {:ex_marcel, "~> 0.1.0"},
       {:taskweft, github: "V-Sekai-fire/multiplayer-fabric-taskweft"},
-      {:weft_warp_burrito, github: "weftspun/weft-warp-burrito"},
+      {:weft_warp_burrito, github: "weftspun/weft-warp-burrito", only: :dev, runtime: false},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
+      {:mox, "~> 1.1", only: :test},
 
       # OpenTelemetry — ships spans + logs to multiplayer-fabric-observability
       {:opentelemetry, "~> 1.6"},

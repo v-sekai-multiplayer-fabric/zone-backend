@@ -87,3 +87,24 @@ existing `bcrypt_elixir`/`nmake` gap already blocks `mix compile`
 before reaching it. No `zone-backend` code references
 `WeftWarpBurrito.*` yet, by design. Revisit this RFD once
 `weft-warp-burrito` RFD 2 or RFD 5 reaches `published`/`committed`.
+
+**Update**: `weft_warp_burrito`'s own `mix.exs` hardcodes `mingw32-make`
+and `elixir: "~> 1.20"`, which broke this org's Linux CI unconditionally
+(confirmed via a failed GitHub Actions run — Mix compiles every declared
+dependency regardless of whether any code calls it). Changed the
+`mix.exs` entry to `only: :dev, runtime: false`, so `MIX_ENV=test` (what
+CI runs) never fetches or compiles it. This does not fix `mix compile`
+in `:dev` on this or any Linux machine — that stays genuinely unbuildable
+without the RISC-V/mingw32 toolchain, which is expected for a dev-only
+evaluation dependency.
+
+Also: strangler-fig scaffolding is now in place — `Uro.Ports.ReBAC`/
+`Uro.Ports.Planner` behaviours, `Uro.ReBAC`/`Uro.Planner` facades
+resolved via `Application.get_env(:uro, :rebac_adapter/:planner_adapter, ...)`,
+and `Uro.ReBAC.TaskweftAdapter`/`Uro.Planner.TaskweftAdapter` as the sole,
+config-default real implementation. All three call sites
+(`lib/uro/v_sekai.ex`, `lib/uro/helpers/user_content_helper.ex`,
+`lib/uro/v_sekai/entity_planner.ex`) now go through the facade instead of
+calling `Taskweft.*` directly — no behavior change, same real Taskweft
+calls under the hood. This is prep only: no second (`weft_warp_burrito`
+-backed) adapter exists yet, per the "later, conditional" step above.

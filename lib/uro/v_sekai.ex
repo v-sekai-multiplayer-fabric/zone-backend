@@ -56,11 +56,11 @@ defmodule Uro.VSekai do
 
   def can_enter_zone?(%Zone{} = zone, player_id) do
     graph =
-      Taskweft.ReBAC.new_graph()
-      |> Taskweft.ReBAC.add_edge(to_string(zone.user_id), to_string(zone.id), "OWNS")
-      |> Taskweft.ReBAC.add_edge(to_string(zone.user_id), to_string(zone.id), "CAN_ENTER")
+      Uro.ReBAC.new_graph()
+      |> Uro.ReBAC.add_edge(to_string(zone.user_id), to_string(zone.id), "OWNS")
+      |> Uro.ReBAC.add_edge(to_string(zone.user_id), to_string(zone.id), "CAN_ENTER")
 
-    Taskweft.ReBAC.check_rel(graph, to_string(player_id), "CAN_ENTER", to_string(zone.id))
+    Uro.ReBAC.check_rel(graph, to_string(player_id), "CAN_ENTER", to_string(zone.id))
   end
 
   def get_zone!(id) do
