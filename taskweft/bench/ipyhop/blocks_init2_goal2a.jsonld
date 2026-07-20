@@ -1,0 +1,346 @@
+{
+  "@context": {
+    "vsekai": "https://v-sekai.org/",
+    "domain": "vsekai:planning/domain/"
+  },
+  "@type": "domain:Definition",
+  "name": "ipyhop_blocks_init2_goal2a",
+  "description": "IPyHOP canonical blocks_world init_state_2 + goal2a: 4 blocks, achieve b-on-c, a-on-d. Expected plan: unstack-a, putdown-a, unstack-b, stack-b-c, pickup-a, stack-a-d.",
+  "variables": [
+    {
+      "name": "pos",
+      "type": "ref",
+      "init": {
+        "a": "c",
+        "b": "d",
+        "c": "table",
+        "d": "table"
+      }
+    },
+    {
+      "name": "clear",
+      "type": "bool",
+      "init": {
+        "a": true,
+        "b": true,
+        "c": false,
+        "d": false
+      }
+    },
+    {
+      "name": "holding",
+      "type": "bool",
+      "init": {
+        "hand": false
+      }
+    }
+  ],
+  "actions": {
+    "a_pickup": {
+      "params": [
+        "block"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/pos/{block}"
+            },
+            "b": "table"
+          }
+        },
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/clear/{block}"
+            },
+            "b": true
+          }
+        },
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/holding/hand"
+            },
+            "b": false
+          }
+        },
+        {
+          "pointer/set": "/pos/{block}",
+          "value": "hand"
+        },
+        {
+          "pointer/set": "/clear/{block}",
+          "value": false
+        },
+        {
+          "pointer/set": "/holding/hand",
+          "value": "{block}"
+        }
+      ]
+    },
+    "a_unstack": {
+      "params": [
+        "block",
+        "under"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/clear/{block}"
+            },
+            "b": true
+          }
+        },
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/holding/hand"
+            },
+            "b": false
+          }
+        },
+        {
+          "pointer/set": "/pos/{block}",
+          "value": "hand"
+        },
+        {
+          "pointer/set": "/clear/{block}",
+          "value": false
+        },
+        {
+          "pointer/set": "/holding/hand",
+          "value": "{block}"
+        },
+        {
+          "pointer/set": "/clear/{under}",
+          "value": true
+        }
+      ]
+    },
+    "a_putdown": {
+      "params": [
+        "block"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/pos/{block}"
+            },
+            "b": "hand"
+          }
+        },
+        {
+          "pointer/set": "/pos/{block}",
+          "value": "table"
+        },
+        {
+          "pointer/set": "/clear/{block}",
+          "value": true
+        },
+        {
+          "pointer/set": "/holding/hand",
+          "value": false
+        }
+      ]
+    },
+    "a_stack": {
+      "params": [
+        "block",
+        "target"
+      ],
+      "body": [
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/pos/{block}"
+            },
+            "b": "hand"
+          }
+        },
+        {
+          "eval": {
+            "type": "math/eq",
+            "a": {
+              "type": "pointer/get",
+              "pointer": "/clear/{target}"
+            },
+            "b": true
+          }
+        },
+        {
+          "pointer/set": "/pos/{block}",
+          "value": "{target}"
+        },
+        {
+          "pointer/set": "/clear/{block}",
+          "value": true
+        },
+        {
+          "pointer/set": "/holding/hand",
+          "value": false
+        },
+        {
+          "pointer/set": "/clear/{target}",
+          "value": false
+        }
+      ]
+    }
+  },
+  "methods": {
+    "move_one": {
+      "params": [
+        "block",
+        "dest"
+      ],
+      "alternatives": [
+        {
+          "name": "get_and_put",
+          "subtasks": [
+            [
+              "get",
+              "{block}"
+            ],
+            [
+              "put",
+              "{block}",
+              "{dest}"
+            ]
+          ]
+        }
+      ]
+    },
+    "get": {
+      "params": [
+        "block"
+      ],
+      "alternatives": [
+        {
+          "name": "pickup_from_table",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/pos/{block}"
+                },
+                "b": "table"
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_pickup",
+              "{block}"
+            ]
+          ]
+        },
+        {
+          "name": "unstack",
+          "subtasks": [
+            [
+              "a_unstack",
+              "{block}",
+              "/pos/{block}"
+            ]
+          ]
+        }
+      ]
+    },
+    "put": {
+      "params": [
+        "block",
+        "dest"
+      ],
+      "alternatives": [
+        {
+          "name": "stack_on_block",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/holding/hand"
+                },
+                "b": "{block}"
+              }
+            },
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/clear/{dest}"
+                },
+                "b": true
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_stack",
+              "{block}",
+              "{dest}"
+            ]
+          ]
+        },
+        {
+          "name": "putdown_on_table",
+          "check": [
+            {
+              "eval": {
+                "type": "math/eq",
+                "a": {
+                  "type": "pointer/get",
+                  "pointer": "/holding/hand"
+                },
+                "b": "{block}"
+              }
+            }
+          ],
+          "subtasks": [
+            [
+              "a_putdown",
+              "{block}"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "todo_list": [
+    [
+      "move_one",
+      "a",
+      "table"
+    ],
+    [
+      "move_one",
+      "b",
+      "c"
+    ],
+    [
+      "move_one",
+      "a",
+      "d"
+    ]
+  ]
+}

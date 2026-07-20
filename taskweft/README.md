@@ -1,0 +1,29 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 K. S. Ernest (iFire) Lee -->
+
+# multiplayer-fabric-taskweft
+
+HTN planner server. Exposes the `plan` and `replan` tools, and every bundled
+`priv/plans/{domains,problems}/*.jsonld` as a resource.
+
+The planner model is **RECTGTN** (Relationship-Enabled Capability-Temporal
+Goal-Task-Network). See [docs/rectgtn.md](docs/rectgtn.md) for the acronym, the
+three task kinds (`TwCall`, `TwGoal`, `TwMultiGoal`), and their golden/rejected
+JSON-LD shapes.
+
+Download the binary from the
+[latest release](https://github.com/taskweft/taskweft/releases).
+
+```sh
+taskweft plan <domain.jsonld>        # plan: from a file, --problem <d> <p>, or stdin
+taskweft replan <fail_step> <domain> # replan after a step failure
+taskweft mcp [--http [--port N]]     # MCP server: stdio, or HTTP
+```
+
+## MCP client
+
+Point your MCP config at the binary — no `mix`, no toolchain:
+
+```json
+{ "mcpServers": { "taskweft": { "command": "/path/to/taskweft", "args": ["mcp"] } } }
+```

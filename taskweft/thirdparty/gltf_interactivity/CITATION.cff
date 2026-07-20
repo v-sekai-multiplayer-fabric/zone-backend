@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: >-
+  This directory vendors a Markdown conversion of the glTF 2.0 Interactivity
+  extension specification, published by the Khronos Group. If you use or
+  reference this content, please cite the original specification (below),
+  not this repository.
+type: standard
+title: "glTF 2.0 Interactivity Extension Specification"
+authors:
+  - name: "The Khronos 3D Formats Working Group"
+  - name: "The Khronos Group Inc."
+repository-code: "https://github.com/KhronosGroup/glTF"
+url: "https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html"
+license: "CC-BY-4.0"
+commit: 9804322b71b782b797ce63f6787b9a0341cb6b47
+date-released: "2026-07-07"
+identifiers:
+  - type: url
+    value: "https://github.com/KhronosGroup/glTF/blob/9804322b71b782b797ce63f6787b9a0341cb6b47/extensions/2.0/Khronos/KHR_interactivity/Specification.adoc"
+    description: >-
+      Exact source revision converted into this directory's 00-04 Markdown
+      files (AsciiDoc -> DocBook via asciidoctor -b docbook5 -> Markdown via
+      pandoc -f docbook -t gfm, then split at the six top-level headings:
+      Foreword, Introduction, Concepts, Functional Specification [split
+      further into 02_node_types.md's "Operations" catalog and
+      03_extending_gltf.md from "Extending glTF Object Model" onward], JSON
+      Syntax, Validation). To refresh, repeat the same conversion against the
+      current interactivity branch and update this file's commit/date.

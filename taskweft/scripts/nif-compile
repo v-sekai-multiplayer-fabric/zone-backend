@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 K. S. Ernest (iFire) Lee
+#
+# sccache-cacheable compiler wrapper for the taskweft_nif build, used as CC/CXX
+# for Burrito's per-target NIF recompile (wired from mix.exs).
+#
+#   nif-compile {cc|cxx} <compiler args...>
+#
+# taskweft_nif's Makefile compiles + links in one command
+# (`$(CXX) ... -shared src.cpp -o out.so`). sccache only caches *compile*
+# steps, not links, so this splits that single command into a cacheable
+# compile (source -> object, via sccache) and a separate link (object ->
+# shared object) using the SAME flags (preserving the -target, e.g. the musl
+# triple on Linux). If sccache is unavailable it falls back to a plain build.
+set -euo pipefail
+
+mode="$1"
+shift
+here="$(cd "$(dirname "$0")" && pwd)"
+
+case "$mode" in
+  cc) shim="$here/zig-cc" ;;
+  cxx) shim="$here/zig-cxx" ;;
+  *) echo "nif-compile: unknown mode '$mode'" >&2; exit 2 ;;
+esac
+
+# No sccache → plain zig, unchanged behaviour.
+if ! command -v sccache >/dev/null 2>&1; then
+  exec "$shim" "$@"
+fi
+
+args=("$@")
+src=""; out=""; shared=0; compile_only=0
+i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[$i]}"
+  case "$a" in
+    -shared) shared=1 ;;
+    -c) compile_only=1 ;;
+    -o) out="${args[$((i + 1))]}" ;;
+    *.cpp | *.cc | *.cxx | *.c) src="$a" ;;
+  esac
+  i=$((i + 1))
+done
+
+# Only the combined compile+link of a single source is worth splitting.
+if [ "$shared" = 1 ] && [ "$compile_only" = 0 ] && [ -n "$src" ] && [ -n "$out" ]; then
+  obj="${out%.*}.o"
+
+  # Burrito unpacks the target ERTS to a fresh /tmp dir each build, so the
+  # `-I.../erts-*/include` flag changes every run and busts sccache's key.
+  # Redirect it through a stable symlink (keyed on the zig target) — the header
+  # content is identical across builds, so sccache now hits.
+  triple=""
+  i=0
+  while [ $i -lt ${#args[@]} ]; do
+    [ "${args[$i]}" = "-target" ] && triple="${args[$((i + 1))]}"
+    i=$((i + 1))
+  done
+  stable_inc="${TMPDIR:-/tmp}/taskweft-erts-include-${triple:-default}"
+
+  cargs=()
+  i=0
+  while [ $i -lt ${#args[@]} ]; do
+    a="${args[$i]}"
+    case "$a" in
+      -shared) ;;                    # compile step is not a link
+      -o) i=$((i + 1)) ;;            # drop `-o out`
+      "$src") ;;                     # source re-added explicitly below
+      -I*erts-*/include | -I*unpacked_erts*)
+        ln -sfn "${a#-I}" "$stable_inc"
+        cargs+=("-I$stable_inc")
+        ;;
+      *) cargs+=("$a") ;;
+    esac
+    i=$((i + 1))
+  done
+  sccache "$shim" "${cargs[@]}" -c "$src" -o "$obj"   # cacheable compile
+  "$shim" "${cargs[@]}" -shared "$obj" -o "$out"       # link, same flags
+else
+  exec sccache "$shim" "${args[@]}"
+fi
