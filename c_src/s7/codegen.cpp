@@ -16,7 +16,7 @@ namespace {
 
 bool is_special_form(const std::string& s) {
   return s == "if" || s == "let" || s == "let*" || s == "begin" || s == "set!" || s == "and" ||
-         s == "or" || s == "lambda" || s == "define";
+         s == "or" || s == "lambda" || s == "define" || s == "cond";
 }
 
 bool is_primitive(const std::string& s) {
@@ -25,7 +25,7 @@ bool is_primitive(const std::string& s) {
          s == "car" || s == "cdr" || s == "cons" || s == "list" || s == "length" ||
          s == "list-ref" || s == "pair?" || s == "null?" || s == "vector-ref" ||
          s == "vector-length" || s == "hash-table-ref" || s == "hash-table-set" ||
-         s == "string-length" || s == "string=?";
+         s == "string-length" || s == "string=?" || s == "logand" || s == "logxor" || s == "ash";
 }
 
 // Lowering context: functions live in a deque so references stay stable
@@ -34,6 +34,7 @@ struct LowerCtx {
   std::deque<IRFunction> fns;
   std::unordered_map<std::string, int> by_name;
   int lambda_counter = 0;
+  int named_let_counter = 0;
 
   int find(const std::string& name) const {
     auto it = by_name.find(name);
@@ -58,6 +59,15 @@ struct FnCodegen {
   std::vector<std::unordered_map<std::string, int>> scopes;
   std::set<std::string> captured_names;  // set! on these is a compile error
   int next_label = 0;
+
+  // Named-let support (RFD 0025): a call to `named_let_alias` inside this
+  // function's own body resolves directly to `named_let_target_idx`,
+  // bypassing the normal top-level name lookup (the loop's real
+  // registered name is mangled/unique, never typed by the user). Not
+  // forwarded into nested lambdas/named-lets -- calling the loop name
+  // from a nested closure is not supported in this subset.
+  std::string named_let_alias;
+  int named_let_target_idx = -1;
 
   [[noreturn]] void fail(const std::string& msg) const {
     throw std::runtime_error("codegen: in " + func.name + ": " + msg);
@@ -234,7 +244,13 @@ struct FnCodegen {
 
     if (op == "lambda") return gen_lambda(e);
     if (op == "if") return gen_if(e);
-    if (op == "let") return gen_let(e, /*sequential=*/false);
+    if (op == "cond") return gen_cond(e);
+    if (op == "let") {
+      // Named let (loop keyword): (let name ((v init)...) body...) --
+      // distinguished from ordinary let by e.list[1] being a symbol.
+      if (e.list.size() >= 2 && e.list[1].kind == SExpr::Kind::Sym) return gen_named_let(e);
+      return gen_let(e, /*sequential=*/false);
+    }
     if (op == "let*") return gen_let(e, /*sequential=*/true);
     if (op == "begin") return gen_body(e.list, 1);
     if (op == "set!") return gen_set(e);
@@ -271,6 +287,9 @@ struct FnCodegen {
     if (op == "string-length") return gen_host_prim(e, kHostBinSize, 1, false);
     if (op == "string=?") return gen_host_prim(e, kHostStrEq, 2, /*raw_bool=*/true);
     if (op == "hash-table-set") return gen_hash_table_set(e);
+    if (op == "logand") return gen_binary_prim(e, Op::AND);
+    if (op == "logxor") return gen_binary_prim(e, Op::XOR);
+    if (op == "ash") return gen_ash(e);
 
     return gen_call(e);
   }
@@ -389,6 +408,59 @@ struct FnCodegen {
     return emit_binop(Op::OR, record, tag);
   }
 
+  // (let name ((v1 init1) (v2 init2)...) body...) -- named let (RFD
+  // 0025). Lifts to a top-level function (mangled name, so multiple
+  // `(let loop ...)` forms across a program don't collide), called
+  // recursively by direct CALL, not through a closure: no capture of
+  // enclosing free variables is supported (only the loop's own
+  // parameters and globals) -- narrower than lambda's semantics, but
+  // matches every named-let this compiler's ported content actually
+  // uses. Init expressions are evaluated in the CALLING scope, before
+  // the new function is entered.
+  int gen_named_let(const SExpr& e) {
+    if (e.list.size() < 4 || e.list[2].kind != SExpr::Kind::List) {
+      fail("named let wants (let name ((v init)...) body...)");
+    }
+    const std::string& loop_name = e.list[1].sym;
+    const SExpr& bindings = e.list[2];
+
+    std::vector<std::string> param_names;
+    std::vector<int> init_vregs;
+    for (const SExpr& b : bindings.list) {
+      if (b.kind != SExpr::Kind::List || b.list.size() != 2 || b.list[0].kind != SExpr::Kind::Sym) {
+        fail("named let binding must be (name expr)");
+      }
+      param_names.push_back(b.list[0].sym);
+      init_vregs.push_back(gen_expr(b.list[1]));
+    }
+
+    std::string mangled = loop_name + "$" + std::to_string(ctx.named_let_counter++);
+    int fn_idx = ctx.add_function(mangled, static_cast<int>(param_names.size()));
+
+    {
+      FnCodegen inner{ctx, ctx.fns[static_cast<size_t>(fn_idx)]};
+      inner.named_let_alias = loop_name;
+      inner.named_let_target_idx = fn_idx;
+      inner.scopes.emplace_back();
+      for (size_t p = 0; p < param_names.size(); ++p) {
+        inner.scopes.back()[param_names[p]] = static_cast<int>(p);
+      }
+      int result = inner.gen_body(e.list, 3);
+      Instr ret;
+      ret.op = Op::RETURN;
+      ret.a = result;
+      inner.emit(ret);
+    }
+
+    Instr in;
+    in.op = Op::CALL;
+    in.callee = fn_idx;
+    in.args = init_vregs;
+    in.dst = new_vreg();
+    emit(in);
+    return in.dst;
+  }
+
   int gen_closure_call(int closure_vreg, const SExpr& e) {
     Instr in;
     in.op = Op::CALL_INDIRECT;
@@ -420,6 +492,40 @@ struct FnCodegen {
     } else {
       emit_move(result, emit_imm(kNil));
     }
+    emit_label(end_label);
+    return result;
+  }
+
+  // (cond (test1 body1...) (test2 body2...) ... (else bodyN...)) --
+  // desugars to nested if at codegen time (RFD 0025), no IR changes.
+  // Each clause needs a non-empty body (a bodyless clause returning the
+  // test's own truthy value, legal in real Scheme, isn't supported here
+  // -- nothing in this compiler's ported content needs it). No clause
+  // matching falls through to nil, matching gen_if's own "no else" rule.
+  int gen_cond(const SExpr& e) {
+    if (e.list.size() < 2) fail("cond wants at least one clause");
+    int result = new_vreg();
+    int end_label = new_label();
+
+    for (size_t i = 1; i < e.list.size(); ++i) {
+      const SExpr& clause = e.list[i];
+      if (clause.kind != SExpr::Kind::List || clause.list.size() < 2) {
+        fail("cond clause must be (test body...)");
+      }
+      bool is_else = clause.list[0].kind == SExpr::Kind::Sym && clause.list[0].sym == "else";
+      if (is_else) {
+        emit_move(result, gen_body(clause.list, 1));
+        emit_jump(end_label);
+        break;
+      }
+      int next_label = new_label();
+      branch_if_false(gen_expr(clause.list[0]), next_label);
+      emit_move(result, gen_body(clause.list, 1));
+      emit_jump(end_label);
+      emit_label(next_label);
+    }
+
+    emit_move(result, emit_imm(kNil));
     emit_label(end_label);
     return result;
   }
@@ -511,6 +617,41 @@ struct FnCodegen {
   int gen_binary_prim(const SExpr& e, Op op) {
     if (e.list.size() != 3) fail("binary primitive wants 2 arguments");
     return emit_binop(op, gen_expr(e.list[1]), gen_expr(e.list[2]));
+  }
+
+  // (ash value shift): arithmetic shift, positive = left, negative =
+  // right (RFD 0024). Left shift works directly on the TAGGED value
+  // (shifting left never disturbs the tag's zero low bits regardless of
+  // shift amount); right shift does NOT commute with the tag the same
+  // way and must untag -> shift -> retag, or tag bits leak into the
+  // result. The shift amount itself is always untagged first.
+  int gen_ash(const SExpr& e) {
+    if (e.list.size() != 3) fail("ash wants 2 arguments");
+    int value = gen_expr(e.list[1]);
+    int shift_tagged = gen_expr(e.list[2]);
+    int three = emit_imm(3);
+    int shift_raw = emit_binop(Op::SRA, shift_tagged, three);
+    int sign = emit_binop(Op::SRA, shift_raw, emit_imm(63));  // 0 if >=0, -1 if <0
+
+    int result = new_vreg();
+    int positive_label = new_label();
+    int end_label = new_label();
+
+    emit_branch_zero(sign, positive_label);
+
+    // Negative: right shift by -shift_raw, untag/shift/retag.
+    int neg_shift = emit_binop(Op::SUB, emit_imm(0), shift_raw);
+    int untagged = emit_binop(Op::SRA, value, three);
+    int shifted = emit_binop(Op::SRA, untagged, neg_shift);
+    emit_move(result, emit_binop(Op::SLL, shifted, three));
+    emit_jump(end_label);
+
+    // Non-negative: left shift the tagged value directly.
+    emit_label(positive_label);
+    emit_move(result, emit_binop(Op::SLL, value, shift_raw));
+
+    emit_label(end_label);
+    return result;
   }
 
   // Bignum-correct ordering via CHECKED_LT (raw 0/1), then bool-tag.
@@ -605,7 +746,9 @@ struct FnCodegen {
   }
 
   int gen_call(const SExpr& e) {
-    int callee = ctx.find(e.list[0].sym);
+    int callee = (!named_let_alias.empty() && e.list[0].sym == named_let_alias)
+                     ? named_let_target_idx
+                     : ctx.find(e.list[0].sym);
     if (callee < 0) fail("unknown function: " + e.list[0].sym);
     const IRFunction& target = ctx.fns[static_cast<size_t>(callee)];
     if (static_cast<int>(e.list.size()) - 1 != target.num_params) {
