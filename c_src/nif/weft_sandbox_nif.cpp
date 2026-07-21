@@ -190,4 +190,149 @@ FINE_NIF(call_capability_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 } // namespace
 
+// --- Compiled-program resource + host-call trampoline (RFD 0018) ---
+//
+// A second machine kind: RISC-V ELFs produced by the in-repo s7 AOT
+// compiler (c_src/s7). Unlike the s7-interpreter guest above, these
+// programs may ecall the host-math syscall (600, see c_src/s7/value.h)
+// mid-execution when fixnum arithmetic overflows or touches a bignum
+// handle. The handler cannot compute the answer here - the whole point
+// (RFD 0018) is that Elixir's native arbitrary-precision integers do
+// the math - so it stops the Machine (state persists in this resource),
+// the NIF returns {:host_call, op, a, b} to the owning GenServer, and
+// program_resume_nif() injects the result and continues execution.
+//
+// The exported-function names callable here come from ELFs we compile
+// ourselves (never untrusted input); WeftWarpBurrito.Program's API is
+// the gate, same trust shape as the fixed-capability set above.
+class ProgramResource {
+public:
+	explicit ProgramResource(std::vector<uint8_t> elf) : elfBytes(std::move(elf)) {
+		machine = std::make_unique<Machine64>(
+			elfBytes, riscv::MachineOptions<riscv::RISCV64>{ .memory_max = 64UL << 20 });
+		machine->set_userdata(this);
+	}
+
+	// Declaration order matters: see SandboxResource's comment.
+	std::vector<uint8_t> elfBytes;
+	std::unique_ptr<Machine64> machine;
+
+	// Host-call trampoline state, set by the syscall handler.
+	bool pending = false;
+	int64_t pending_op = 0;
+	int64_t pending_a = 0;
+	int64_t pending_b = 0;
+	gaddr_t pending_pc = 0;
+	uint64_t fuel = 0;
+};
+
+FINE_RESOURCE(ProgramResource);
+
+namespace {
+
+constexpr size_t kSyscallHostMath = 600; // must match c_src/s7/value.h
+
+// The handler table is static per Machine type; the s7-interpreter
+// guest (SandboxResource) never issues syscall 600, so dispatch here
+// always means a ProgramResource machine (whose userdata is set).
+void install_host_math_handler_once() {
+	static bool installed = false;
+	if (installed) return;
+	installed = true;
+	Machine64::install_syscall_handler(kSyscallHostMath, [](Machine64& machine) {
+		auto* program = machine.get_userdata<ProgramResource>();
+		auto [op, a, b] = machine.sysargs<int64_t, int64_t, int64_t>();
+		program->pending = true;
+		program->pending_op = op;
+		program->pending_a = a;
+		program->pending_b = b;
+		program->pending_pc = machine.cpu.pc();
+		machine.stop();
+	});
+}
+
+// Shared tail of call/resume: either the guest finished (result in a0)
+// or it stopped at a host-math ecall (trampoline back to Elixir).
+fine::Term program_finish(ErlNifEnv* env, ProgramResource& program) {
+	Machine64& machine = *program.machine;
+	if (program.pending) {
+		return fine::encode(env, std::make_tuple(fine::Atom("host_call"), program.pending_op,
+		                                          program.pending_a, program.pending_b));
+	}
+	return fine::encode(env, fine::Ok(static_cast<int64_t>(machine.cpu.reg(riscv::REG_ARG0))));
+}
+
+std::variant<fine::Ok<fine::ResourcePtr<ProgramResource>>, fine::Error<fine::Atom>>
+new_program_nif(ErlNifEnv*, std::string elf_binary) {
+	install_host_math_handler_once();
+	std::vector<uint8_t> elfBytes(elf_binary.begin(), elf_binary.end());
+	try {
+		return fine::Ok(fine::make_resource<ProgramResource>(std::move(elfBytes)));
+	} catch (const std::exception&) {
+		return fine::Error(fine::Atom("bad_elf"));
+	}
+}
+
+FINE_NIF(new_program_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND);
+
+fine::Term program_call_nif(ErlNifEnv* env, fine::ResourcePtr<ProgramResource> resource,
+                            std::string function, std::vector<int64_t> args, uint64_t fuel) {
+	ProgramResource& program = *resource;
+	Machine64& machine = *program.machine;
+	try {
+		if (args.size() > 8) {
+			return fine::encode(env, fine::Error(fine::Atom("too_many_args")));
+		}
+		gaddr_t funcAddr = machine.memory.resolve_address(function.c_str());
+		if (funcAddr == 0) {
+			return fine::encode(env, fine::Error(fine::Atom("no_such_function")));
+		}
+		machine.cpu.reset_stack_pointer();
+		for (size_t i = 0; i < args.size(); ++i) {
+			machine.cpu.reg(riscv::REG_ARG0 + static_cast<int>(i)) =
+				static_cast<gaddr_t>(args[i]);
+		}
+		machine.cpu.reg(riscv::REG_RA) = machine.memory.exit_address();
+		program.pending = false;
+		program.fuel = fuel;
+		machine.simulate_with<true>(fuel, 0u, funcAddr);
+		return program_finish(env, program);
+	} catch (const riscv::MachineException& e) {
+		return fine::encode(env, fine::Error(machineExceptionToAtom(e)));
+	} catch (const std::exception&) {
+		return fine::encode(env, fine::Error(fine::Atom("guest_trap")));
+	}
+}
+
+FINE_NIF(program_call_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND);
+
+fine::Term program_resume_nif(ErlNifEnv* env, fine::ResourcePtr<ProgramResource> resource,
+                              int64_t result) {
+	ProgramResource& program = *resource;
+	Machine64& machine = *program.machine;
+	try {
+		if (!program.pending) {
+			return fine::encode(env, fine::Error(fine::Atom("not_pending")));
+		}
+		program.pending = false;
+		// Depending on where libriscv's dispatch loop stopped, the PC may
+		// still point AT the ecall (which would re-execute it) - skip past
+		// it if so. Robust against either stop-point behavior.
+		if (machine.cpu.pc() == program.pending_pc) {
+			machine.cpu.jump(program.pending_pc + 4);
+		}
+		machine.cpu.reg(riscv::REG_ARG0) = static_cast<gaddr_t>(result);
+		machine.simulate_with<true>(program.fuel, 0u, machine.cpu.pc());
+		return program_finish(env, program);
+	} catch (const riscv::MachineException& e) {
+		return fine::encode(env, fine::Error(machineExceptionToAtom(e)));
+	} catch (const std::exception&) {
+		return fine::encode(env, fine::Error(fine::Atom("guest_trap")));
+	}
+}
+
+FINE_NIF(program_resume_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND);
+
+} // namespace
+
 FINE_INIT("Elixir.WeftWarpBurrito.SandboxNif");

@@ -33,4 +33,18 @@ defmodule WeftWarpBurrito.SandboxNif do
   entry point would defeat the whole point of a closed capability set).
   """
   def call_capability_nif(_resource, _capability, _fuel), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc "Loads an s7c-compiled RISC-V ELF (binary) as a program resource."
+  def new_program_nif(_elf_binary), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Calls an exported function of a compiled program with tagged GuestValue
+  arguments. Returns `{:ok, tagged}` when the guest finishes, or
+  `{:host_call, op, a, b}` when it trapped to the host-math ecall (RFD
+  0018) -- compute in Elixir, then `program_resume_nif/2`.
+  """
+  def program_call_nif(_resource, _function, _args, _fuel), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc "Injects a host-call result and continues the stopped program."
+  def program_resume_nif(_resource, _result), do: :erlang.nif_error(:nif_not_loaded)
 end

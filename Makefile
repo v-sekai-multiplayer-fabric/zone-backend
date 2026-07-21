@@ -2,8 +2,10 @@ PRIV_DIR = priv
 
 ifeq ($(OS),Windows_NT)
   NIF_EXT = dll
+  EXE = .exe
 else
   NIF_EXT = so
+  EXE =
 endif
 NIF_SO   = $(PRIV_DIR)/libtaskweft_nif.$(NIF_EXT)
 SANDBOX_NIF_SO = $(PRIV_DIR)/weft_sandbox_nif.$(NIF_EXT)
@@ -19,7 +21,7 @@ endif
 
 RISCV_GCC := riscv-none-elf-gcc
 
-all: $(NIF_SO) guest nif
+all: $(NIF_SO) guest nif s7fixtures
 
 $(PRIV_DIR):
 	mkdir -p $(PRIV_DIR)
@@ -34,7 +36,7 @@ $(NIF_SO): c_src/taskweft_nif.cpp | $(PRIV_DIR)
 # RISC-V object files still do their own real incremental compilation
 # underneath, so this costs a few seconds per `mix compile`, not a full
 # rebuild.
-.PHONY: all clean guest nif
+.PHONY: all clean guest nif s7fixtures
 
 guest: | $(PRIV_DIR)
 	$(RISCV_GCC) -march=rv64gc -mabi=lp64d -static -O2 \
@@ -55,7 +57,15 @@ nif: | $(PRIV_DIR)
 	cmake --build build --target weft_sandbox_nif
 	cp build/weft_sandbox_nif.$(NIF_EXT) $(SANDBOX_NIF_SO)
 
+# Build the in-repo s7 AOT compiler (c_src/s7, RFD 0019 -- no
+# cross-toolchain) and compile the test fixture programs that
+# WeftWarpBurrito.Program's tests load from priv/.
+s7fixtures: | $(PRIV_DIR)
+	cmake -S c_src -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DERTS_INCLUDE_DIR="$(ERTS_INCLUDE_DIR)" -DFINE_INCLUDE_DIR="$(FINE_INCLUDE_DIR)"
+	cmake --build build --target s7c
+	build/s7c$(EXE) c_src/s7/fixtures/basic.scm -o $(PRIV_DIR)/s7_basic.elf
+
 clean:
-	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf
+	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf
 	rm -f c_src/guest/*.o
 	rm -rf build
