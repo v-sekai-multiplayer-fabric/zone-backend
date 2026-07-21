@@ -186,6 +186,41 @@ int main() {
       {"bignum-numeric-eq",
        "(define (main) (= (+ 1152921504606846975 1) (+ 1152921504606846975 1)))",
        "main", {}, s7::kTrue},
+      // --- RFD 0024: bitwise primitives ---
+      {"logand-basic", "(define (main) (logand 12 10))", "main", {}, s7::tag_fixnum(8)},
+      {"logxor-basic", "(define (main) (logxor 12 10))", "main", {}, s7::tag_fixnum(6)},
+      {"ash-left", "(define (main) (ash 1 4))", "main", {}, s7::tag_fixnum(16)},
+      {"ash-right", "(define (main) (ash 256 -4))", "main", {}, s7::tag_fixnum(16)},
+      {"ash-right-zero", "(define (main) (ash 5 0))", "main", {}, s7::tag_fixnum(5)},
+      {"xorshift32-like",
+       // 4294967295 = #xFFFFFFFF -- the reader has no hex literal syntax.
+       "(define (u32 x) (logand x 4294967295))\n"
+       "(define (main s)\n"
+       "  (let* ((s (u32 (logxor s (u32 (ash s 13)))))\n"
+       "         (s (u32 (logxor s (ash s -17))))\n"
+       "         (s (u32 (logxor s (u32 (ash s 5))))))\n"
+       "    s))",
+       "main", {s7::tag_fixnum(42)}, s7::tag_fixnum(11355432)},
+      // --- RFD 0025: cond ---
+      {"cond-first-match", "(define (main) (cond (#t 1) (#t 2)))", "main", {}, s7::tag_fixnum(1)},
+      {"cond-second-match", "(define (main) (cond (#f 1) (#t 2)))", "main", {}, s7::tag_fixnum(2)},
+      {"cond-else", "(define (main) (cond (#f 1) (else 3)))", "main", {}, s7::tag_fixnum(3)},
+      {"cond-no-match", "(define (main) (cond (#f 1) (#f 2)))", "main", {}, s7::kNil},
+      {"cond-damage-of",
+       "(define (damage-of stage) (cond ((= stage 0) 10) ((= stage 1) 15) (else 25)))\n"
+       "(define (main) (+ (damage-of 0) (+ (damage-of 1) (damage-of 2))))",
+       "main", {}, s7::tag_fixnum(50)},
+      // --- RFD 0025: named let ---
+      {"named-let-sum",
+       "(define (main)\n"
+       "  (let loop ((i 0) (acc 0))\n"
+       "    (if (= i 5) acc (loop (+ i 1) (+ acc i)))))",
+       "main", {}, s7::tag_fixnum(10)},
+      {"named-let-two-in-one-program",
+       "(define (f) (let loop ((i 0)) (if (= i 3) i (loop (+ i 1)))))\n"
+       "(define (g) (let loop ((i 0)) (if (= i 7) i (loop (+ i 1)))))\n"
+       "(define (main) (+ (f) (g)))",
+       "main", {}, s7::tag_fixnum(10)},
   };
 
   const std::vector<ValueTest> value_tests = {
