@@ -12,20 +12,20 @@
 
 	.global g_record_macros_scm
 g_record_macros_scm:
-	.incbin "guest/content/record-macros.scm"
+	.incbin "c_src/guest/content/record-macros.scm"
 	.byte 0
 
 	.global g_loot_scm
 g_loot_scm:
-	.incbin "guest/content/loot.scm"
+	.incbin "c_src/guest/content/loot.scm"
 	.byte 0
 
 	.global g_combat_scm
 g_combat_scm:
-	.incbin "guest/content/combat.scm"
+	.incbin "c_src/guest/content/combat.scm"
 	.byte 0
 
 	.global g_progression_scm
 g_progression_scm:
-	.incbin "guest/content/progression.scm"
+	.incbin "c_src/guest/content/progression.scm"
 	.byte 0
