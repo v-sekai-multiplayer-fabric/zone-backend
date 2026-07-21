@@ -33,3 +33,17 @@ repos:
         entry: python3 scripts/format_lisp.py --check
         language: system
         files: \.scm$
+
+      - id: format-lean
+        name: "lean: style (scripts/format_lean.py)"
+        entry: python3 scripts/format_lean.py --check
+        language: system
+        files: \.lean$
+        exclude: ^lean/\.lake/
+
+      - id: lean-build
+        name: "lean: lake build"
+        entry: bash -c 'cd lean && lake build'
+        language: system
+        pass_filenames: false
+        files: \.lean$
