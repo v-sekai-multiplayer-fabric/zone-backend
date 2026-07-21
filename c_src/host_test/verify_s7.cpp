@@ -17,6 +17,7 @@
 #include <libriscv/machine.hpp>
 
 #include "../s7/compiler.h"
+#include "../s7/host_math.h"
 #include "../s7/ir_interpreter.h"
 #include "../s7/value.h"
 
@@ -32,9 +33,24 @@ struct TestCase {
   int64_t expected;           // tagged
 };
 
+// The host side of the checked-arithmetic ABI (RFD 0018): the guest
+// ecalls with a7=kSyscallHostMath and the host computes with the
+// reference __int128 table (the production NIF does the same with
+// Elixir's native bignums via the trampoline instead).
+void install_host_math() {
+  Machine64::install_syscall_handler(
+      static_cast<size_t>(s7::kSyscallHostMath), [](Machine64& machine) {
+        auto* table = machine.get_userdata<s7::HostBignumTable>();
+        auto [op, a, b] = machine.sysargs<int64_t, int64_t, int64_t>();
+        machine.set_result(table->apply(op, a, b));
+      });
+}
+
 int64_t run_riscv(const std::vector<uint8_t>& elf, const char* entry,
                   const std::vector<int64_t>& args) {
   Machine64 machine(elf, riscv::MachineOptions<riscv::RISCV64>{.memory_max = 16UL << 20});
+  s7::HostBignumTable table;
+  machine.set_userdata(&table);
   switch (args.size()) {
     case 0: return static_cast<int64_t>(machine.vmcall<50'000'000ull>(entry));
     case 1: return static_cast<int64_t>(machine.vmcall<50'000'000ull>(entry, args[0]));
@@ -46,6 +62,8 @@ int64_t run_riscv(const std::vector<uint8_t>& elf, const char* entry,
 }  // namespace
 
 int main() {
+  install_host_math();
+
   const std::vector<TestCase> tests = {
       {"add", "(define (main) (+ 1 2))", "main", {}, s7::tag_fixnum(3)},
       {"arith-mix",
@@ -104,6 +122,28 @@ int main() {
        "(define (make-adder n) (lambda (x) (+ x n)))\n"
        "(define (main) (+ ((make-adder 100) 1) ((make-adder 200) 2)))",
        "main", {}, s7::tag_fixnum(303)},
+      // --- Checked arithmetic / bignums (RFD 0018) ---
+      {"overflow-roundtrip",
+       "(define (main) (- (+ 1152921504606846975 5) 10))",
+       "main", {}, s7::tag_fixnum(1152921504606846970)},
+      {"fixnum-min-exact",
+       "(define (main) (- 0 (+ 1152921504606846975 1)))",
+       "main", {}, s7::tag_fixnum(-1152921504606846976)},
+      {"bignum-fact-ratio",
+       "(define (fact n) (if (< n 2) 1 (* n (fact (- n 1)))))\n"
+       "(define (main) (quotient (fact 25) (fact 24)))",
+       "main", {}, s7::tag_fixnum(25)},
+      {"bignum-remainder",
+       "(define (fact n) (if (< n 2) 1 (* n (fact (- n 1)))))\n"
+       "(define (main) (remainder (fact 25) 1000000))",
+       "main", {}, s7::tag_fixnum(0)},
+      {"bignum-lt",
+       "(define (fact n) (if (< n 2) 1 (* n (fact (- n 1)))))\n"
+       "(define (main) (< (fact 20) (fact 21)))",
+       "main", {}, s7::kTrue},
+      {"bignum-numeric-eq",
+       "(define (main) (= (+ 1152921504606846975 1) (+ 1152921504606846975 1)))",
+       "main", {}, s7::kTrue},
   };
 
   int failures = 0;

@@ -1,7 +1,7 @@
 ---
 authors: K. S. Ernest (iFire) Lee <ernest.lee@chibifire.com>
-state: prediscussion
-discussion: N/A — no PR yet, plan under active iteration
+state: published
+discussion: N/A — plan substantially executed across PRs #22-#25; see Update
 labels: hrr, tagging, migration, rebac
 ---
 
@@ -108,3 +108,18 @@ config-default real implementation. All three call sites
 calling `Taskweft.*` directly — no behavior change, same real Taskweft
 calls under the hood. This is prep only: no second (`weft_warp_burrito`
 -backed) adapter exists yet, per the "later, conditional" step above.
+
+**Update (state bump to published)**: the plan substantially executed
+across PRs #22-#25, well past what this document originally scoped. The
+`taskweft` dependency is gone entirely: `Taskweft.ReBAC`/`Taskweft.NIF`'s
+actual implementation was extracted into this repo
+([[0015-extract-taskweft-rebac-and-sandbox-into-lib]],
+[[0016-merge-taskweft-nif-native-build-into-uro]]), the `weft_warp_burrito`
+sandbox was fully absorbed ([[0017-merge-weft-warp-burrito-native-build-into-uro]]),
+and the eventual replacement path shifted from "wait for upstream" to
+building it ourselves: the s7 AOT compiler
+([[0019-s7-aot-compiler-no-cross-toolchain]]) plus the host-call
+trampoline ([[0018-bignum-beam-integers-host-call-trampoline]]) are the
+vehicle for eventually running ReBAC/planner logic inside the sandbox.
+The per-call-site migration discipline (facades, one site at a time,
+differential tests before any config flip) stands unchanged.

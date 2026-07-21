@@ -19,6 +19,11 @@ constexpr uint32_t kT0 = 5;     // x5
 constexpr uint32_t kT1 = 6;     // x6
 constexpr uint32_t kT2 = 7;     // x7
 constexpr uint32_t kA0 = 10;    // x10
+constexpr uint32_t kA1 = 11;    // x11
+constexpr uint32_t kA2 = 12;    // x12
+constexpr uint32_t kA7 = 17;    // x17
+constexpr uint32_t kT3 = 28;    // x28
+constexpr uint32_t kT4 = 29;    // x29
 
 // --- Raw RV64 instruction encoders (bit-packing, no external assembler) ---
 
@@ -52,9 +57,14 @@ uint32_t j_type(int32_t offset, uint32_t rd) {
 
 uint32_t enc_addi(uint32_t rd, uint32_t rs1, int32_t imm) { return i_type(imm, rs1, 0b000, rd, 0b0010011); }
 uint32_t enc_sltiu(uint32_t rd, uint32_t rs1, int32_t imm) { return i_type(imm, rs1, 0b011, rd, 0b0010011); }
+uint32_t enc_andi(uint32_t rd, uint32_t rs1, int32_t imm) { return i_type(imm, rs1, 0b111, rd, 0b0010011); }
 uint32_t enc_slli(uint32_t rd, uint32_t rs1, uint32_t shamt) {
   return (0b000000u << 26) | (shamt << 20) | (rs1 << 15) | (0b001u << 12) | (rd << 7) | 0b0010011;
 }
+uint32_t enc_srai(uint32_t rd, uint32_t rs1, uint32_t shamt) {
+  return (0b010000u << 26) | (shamt << 20) | (rs1 << 15) | (0b101u << 12) | (rd << 7) | 0b0010011;
+}
+uint32_t enc_ecall() { return i_type(0, 0, 0b000, 0, 0b1110011); }
 uint32_t enc_ld(uint32_t rd, uint32_t rs1, int32_t imm) { return i_type(imm, rs1, 0b011, rd, 0b0000011); }
 uint32_t enc_sd(uint32_t rs2, uint32_t rs1, int32_t imm) { return s_type(imm, rs2, rs1, 0b011, 0b0100011); }
 uint32_t enc_jalr(uint32_t rd, uint32_t rs1, int32_t imm) { return i_type(imm, rs1, 0b000, rd, 0b1100111); }
@@ -70,10 +80,16 @@ uint32_t enc_xor(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0000000,
 uint32_t enc_sll(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0000000, b, a, 0b001, rd, 0b0110011); }
 uint32_t enc_sra(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0100000, b, a, 0b101, rd, 0b0110011); }
 uint32_t enc_slt(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0000000, b, a, 0b010, rd, 0b0110011); }
+uint32_t enc_mulh(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0000001, b, a, 0b001, rd, 0b0110011); }
 uint32_t enc_bne(uint32_t a, uint32_t b, int32_t off) { return b_type(off, b, a, 0b001); }
+uint32_t enc_beq(uint32_t a, uint32_t b, int32_t off) { return b_type(off, b, a, 0b000); }
+uint32_t enc_bge(uint32_t a, uint32_t b, int32_t off) { return b_type(off, b, a, 0b101); }
 uint32_t enc_auipc(uint32_t rd, int32_t imm20) {
   return (static_cast<uint32_t>(imm20 & 0xFFFFF) << 12) | (rd << 7) | 0b0010111;
 }
+
+struct Emitter;
+void emit_host_math_slow(Emitter& em, int64_t op);
 
 struct Emitter {
   std::vector<uint8_t>& code;
@@ -108,6 +124,17 @@ struct Emitter {
     if (lo != 0) u32(enc_addi(rd, rd, static_cast<int32_t>(lo)));
   }
 };
+
+// The shared 6-word host-math slow path: a0=op, a1/a2=tagged operands
+// (already in t0/t1), a7=syscall number, result comes back in a0 -> t2.
+void emit_host_math_slow(Emitter& em, int64_t op) {
+  em.u32(enc_addi(kA0, kZero, static_cast<int32_t>(op)));
+  em.u32(enc_addi(kA1, kT0, 0));
+  em.u32(enc_addi(kA2, kT1, 0));
+  em.u32(enc_addi(kA7, kZero, static_cast<int32_t>(kSyscallHostMath)));
+  em.u32(enc_ecall());
+  em.u32(enc_addi(kT2, kA0, 0));
+}
 
 // Stack-slot codegen state per function. Frame layout:
 //   [sp + i*8]           vreg i
@@ -295,6 +322,98 @@ CompiledProgram generate_riscv(const IRProgram& program) {
           fe.load(kT0, in.a);
           em.u32(enc_jalr(kRa, kT0, 0));
           fe.store(kA0, in.dst);
+          break;
+        }
+        // Checked tagged arithmetic (RFD 0018). Layout per op is fixed,
+        // so branch offsets are instruction-count constants; the shared
+        // 6-word slow path traps to the host-math ecall. Operands in
+        // t0/t1, result in t2. a0-a2/a7 are freely clobberable here (the
+        // stack-slot scheme never keeps live values in a-regs across IR
+        // ops).
+        case Op::CHECKED_ADD:
+        case Op::CHECKED_SUB: {
+          bool is_add = in.op == Op::CHECKED_ADD;
+          fe.load(kT0, in.a);                       // 0
+          fe.load(kT1, in.b);                       // 1
+          em.u32(enc_or(kT3, kT0, kT1));            // 2
+          em.u32(enc_andi(kT3, kT3, 7));            // 3
+          em.u32(enc_bne(kT3, kZero, 24));          // 4 -> slow (10)
+          em.u32(is_add ? enc_add(kT2, kT0, kT1)    // 5
+                        : enc_sub(kT2, kT0, kT1));
+          // add overflow: ((a^r) & (b^r)) < 0; sub: ((a^b) & (a^r)) < 0
+          em.u32(is_add ? enc_xor(kT4, kT0, kT2)    // 6
+                        : enc_xor(kT4, kT0, kT1));
+          em.u32(is_add ? enc_xor(kT3, kT1, kT2)    // 7
+                        : enc_xor(kT3, kT0, kT2));
+          em.u32(enc_and(kT3, kT3, kT4));           // 8
+          em.u32(enc_bge(kT3, kZero, 28));          // 9 -> done (16)
+          emit_host_math_slow(em, is_add ? kHostAdd : kHostSub);  // 10-15
+          fe.store(kT2, in.dst);                    // 16
+          break;
+        }
+        case Op::CHECKED_MUL: {
+          fe.load(kT0, in.a);                       // 0
+          fe.load(kT1, in.b);                       // 1
+          em.u32(enc_or(kT3, kT0, kT1));            // 2
+          em.u32(enc_andi(kT3, kT3, 7));            // 3
+          em.u32(enc_bne(kT3, kZero, 24));          // 4 -> slow (10)
+          em.u32(enc_srai(kT2, kT0, 3));            // 5  untag lhs
+          em.u32(enc_mulh(kT3, kT2, kT1));          // 6
+          em.u32(enc_mul(kT2, kT2, kT1));           // 7
+          em.u32(enc_srai(kT4, kT2, 63));           // 8
+          em.u32(enc_beq(kT3, kT4, 28));            // 9 -> done (16)
+          emit_host_math_slow(em, kHostMul);               // 10-15
+          fe.store(kT2, in.dst);                    // 16
+          break;
+        }
+        case Op::CHECKED_QUOT: {
+          fe.load(kT0, in.a);                       // 0
+          fe.load(kT1, in.b);                       // 1
+          em.u32(enc_or(kT3, kT0, kT1));            // 2
+          em.u32(enc_andi(kT3, kT3, 7));            // 3
+          em.u32(enc_bne(kT3, kZero, 16));          // 4 -> slow (8)
+          em.u32(enc_div(kT2, kT0, kT1));           // 5
+          em.u32(enc_slli(kT2, kT2, 3));            // 6  retag
+          em.u32(j_type(28, kZero));                // 7 -> done (14)
+          emit_host_math_slow(em, kHostQuot);               // 8-13
+          fe.store(kT2, in.dst);                    // 14
+          break;
+        }
+        case Op::CHECKED_REM: {
+          fe.load(kT0, in.a);                       // 0
+          fe.load(kT1, in.b);                       // 1
+          em.u32(enc_or(kT3, kT0, kT1));            // 2
+          em.u32(enc_andi(kT3, kT3, 7));            // 3
+          em.u32(enc_bne(kT3, kZero, 12));          // 4 -> slow (7)
+          em.u32(enc_rem(kT2, kT0, kT1));           // 5  tag preserved
+          em.u32(j_type(28, kZero));                // 6 -> done (13)
+          emit_host_math_slow(em, kHostRem);               // 7-12
+          fe.store(kT2, in.dst);                    // 13
+          break;
+        }
+        case Op::CHECKED_LT: {
+          fe.load(kT0, in.a);                       // 0
+          fe.load(kT1, in.b);                       // 1
+          em.u32(enc_or(kT3, kT0, kT1));            // 2
+          em.u32(enc_andi(kT3, kT3, 7));            // 3
+          em.u32(enc_bne(kT3, kZero, 12));          // 4 -> slow (7)
+          em.u32(enc_slt(kT2, kT0, kT1));           // 5  raw 0/1
+          em.u32(j_type(28, kZero));                // 6 -> done (13)
+          emit_host_math_slow(em, kHostLt);               // 7-12
+          fe.store(kT2, in.dst);                    // 13
+          break;
+        }
+        case Op::CHECKED_EQ: {
+          fe.load(kT0, in.a);                       // 0
+          fe.load(kT1, in.b);                       // 1
+          em.u32(enc_or(kT3, kT0, kT1));            // 2
+          em.u32(enc_andi(kT3, kT3, 7));            // 3
+          em.u32(enc_bne(kT3, kZero, 16));          // 4 -> slow (8)
+          em.u32(enc_xor(kT2, kT0, kT1));           // 5
+          em.u32(enc_sltiu(kT2, kT2, 1));           // 6  raw 0/1
+          em.u32(j_type(28, kZero));                // 7 -> done (14)
+          emit_host_math_slow(em, kHostEq);               // 8-13
+          fe.store(kT2, in.dst);                    // 14
           break;
         }
       }

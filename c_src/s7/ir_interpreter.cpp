@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "host_math.h"
 #include "value.h"
 
 namespace s7 {
@@ -22,6 +23,7 @@ struct Interp {
   uint64_t steps_left;
   std::unordered_map<int64_t, int64_t> mem;
   int64_t heap_next = static_cast<int64_t>(kHeapBase) + 8;
+  HostBignumTable bignums;
 
   int64_t run(int func_index, const std::vector<int64_t>& args) {
     if (func_index < 0 || func_index >= static_cast<int>(program.functions.size())) {
@@ -110,6 +112,27 @@ struct Interp {
         }
         case Op::STORE_MEM: mem[vregs[in.a] + in.imm] = vregs[in.b]; break;
         case Op::LOAD_FUNC_ADDR: vregs[in.dst] = kOracleFuncBase + in.callee * 8; break;
+        case Op::CHECKED_ADD:
+          vregs[in.dst] = bignums.apply(kHostAdd, vregs[in.a], vregs[in.b]);
+          break;
+        case Op::CHECKED_SUB:
+          vregs[in.dst] = bignums.apply(kHostSub, vregs[in.a], vregs[in.b]);
+          break;
+        case Op::CHECKED_MUL:
+          vregs[in.dst] = bignums.apply(kHostMul, vregs[in.a], vregs[in.b]);
+          break;
+        case Op::CHECKED_QUOT:
+          vregs[in.dst] = bignums.apply(kHostQuot, vregs[in.a], vregs[in.b]);
+          break;
+        case Op::CHECKED_REM:
+          vregs[in.dst] = bignums.apply(kHostRem, vregs[in.a], vregs[in.b]);
+          break;
+        case Op::CHECKED_LT:
+          vregs[in.dst] = bignums.apply(kHostLt, vregs[in.a], vregs[in.b]);
+          break;
+        case Op::CHECKED_EQ:
+          vregs[in.dst] = bignums.apply(kHostEq, vregs[in.a], vregs[in.b]);
+          break;
         case Op::CALL_INDIRECT: {
           int64_t target = vregs[in.a];
           int64_t idx = (target - kOracleFuncBase) / 8;
