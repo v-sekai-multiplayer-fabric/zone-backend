@@ -20,9 +20,9 @@ defmodule Uro.LoopCore.LootCore do
   defp u32(x), do: x &&& @mask
 
   defp xorshift32_next32(s) do
-    s = u32(s ^^^ u32(s <<< 13))
-    s = u32(s ^^^ (s >>> 17))
-    u32(s ^^^ u32(s <<< 5))
+    s = u32(bxor(s, u32(s <<< 13)))
+    s = u32(bxor(s, s >>> 17))
+    u32(bxor(s, u32(s <<< 5)))
   end
 
   defp rng_range(_seed, 0), do: 0
