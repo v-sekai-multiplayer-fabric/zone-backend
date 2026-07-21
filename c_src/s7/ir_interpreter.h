@@ -13,10 +13,15 @@
 
 namespace s7 {
 
+struct HostBignumTable;
+
 // Runs `program.functions[func_index]` with the given (already tagged)
 // argument words. Throws std::runtime_error on malformed IR, division
 // by zero, or exceeding the step budget (runaway-loop guard).
+// `table` lets a harness pass handle arguments (List/Tuple/Map/...)
+// pre-registered in a shared host-value table; when null, a private
+// empty table is used (fixnum-only programs never notice).
 int64_t interpret(const IRProgram& program, int func_index, const std::vector<int64_t>& args,
-                  uint64_t max_steps = 50'000'000);
+                  uint64_t max_steps = 50'000'000, HostBignumTable* table = nullptr);
 
 }  // namespace s7

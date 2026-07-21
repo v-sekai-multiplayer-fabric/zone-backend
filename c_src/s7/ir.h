@@ -53,6 +53,11 @@ enum class Op {
   CHECKED_REM,   // dst <- remainder(a, b)  (tagged in, tagged out)
   CHECKED_LT,    // dst <- a < b            (tagged in, RAW 0/1 out)
   CHECKED_EQ,    // dst <- a == b (numeric) (tagged in, RAW 0/1 out)
+
+  // Unconditional host call (handle-value ops, HostMathOp 16+): unlike
+  // CHECKED_* there is no inline fast path -- the value lives host-side,
+  // so every structural operation is an ecall. imm = the HostMathOp.
+  HOST_OP,       // dst <- host(imm, a, b)  (tagged in, tagged or raw out per op)
 };
 
 struct Instr {

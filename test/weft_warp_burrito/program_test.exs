@@ -39,6 +39,32 @@ defmodule WeftWarpBurrito.ProgramTest do
     assert {:ok, 0} = Program.call(pid, "bigfact-rem", [25, 1_000_000])
   end
 
+  test "lists cross as handles and structural ops trampoline", %{pid: pid} do
+    assert {:ok, 15} = Program.call(pid, "sum-list", [[1, 2, 3, 4, 5]])
+    assert {:ok, 20} = Program.call(pid, "second", [[10, 20, 30]])
+    # Guest-built list decodes back as a real Elixir list.
+    assert {:ok, [1, 2, 3]} = Program.call(pid, "build-list", [1, 2])
+  end
+
+  test "tuples map to scheme vectors", %{pid: pid} do
+    assert {:ok, 40} = Program.call(pid, "tuple-pick", [{7, 40, 9}])
+    assert {:ok, 3} = Program.call(pid, "tuple-size", [{7, 40, 9}])
+  end
+
+  test "maps answer hash-table-ref; missing key is false", %{pid: pid} do
+    assert {:ok, 100} = Program.call(pid, "map-get", [%{hp: 100, mp: 30}, :hp])
+    assert {:ok, false} = Program.call(pid, "map-get", [%{hp: 100}, :armor])
+  end
+
+  test "binaries answer string-length in bytes", %{pid: pid} do
+    assert {:ok, 5} = Program.call(pid, "bin-size", ["hello"])
+  end
+
+  test "atoms are interned so eq? works across the boundary", %{pid: pid} do
+    assert {:ok, true} = Program.call(pid, "same?", [:fire, :fire])
+    assert {:ok, false} = Program.call(pid, "same?", [:fire, :water])
+  end
+
   test "unknown function is a clean error", %{pid: pid} do
     assert {:error, :no_such_function} = Program.call(pid, "nope", [])
   end

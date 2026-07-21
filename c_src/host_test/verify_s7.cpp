@@ -47,17 +47,59 @@ void install_host_math() {
 }
 
 int64_t run_riscv(const std::vector<uint8_t>& elf, const char* entry,
-                  const std::vector<int64_t>& args) {
+                  const std::vector<int64_t>& args, s7::HostBignumTable* shared = nullptr) {
   Machine64 machine(elf, riscv::MachineOptions<riscv::RISCV64>{.memory_max = 16UL << 20});
-  s7::HostBignumTable table;
-  machine.set_userdata(&table);
+  s7::HostBignumTable local;
+  machine.set_userdata(shared ? shared : &local);
   switch (args.size()) {
     case 0: return static_cast<int64_t>(machine.vmcall<50'000'000ull>(entry));
     case 1: return static_cast<int64_t>(machine.vmcall<50'000'000ull>(entry, args[0]));
     case 2: return static_cast<int64_t>(machine.vmcall<50'000'000ull>(entry, args[0], args[1]));
+    case 3:
+      return static_cast<int64_t>(
+          machine.vmcall<50'000'000ull>(entry, args[0], args[1], args[2]));
     default: throw std::runtime_error("test harness: unsupported arg count");
   }
 }
+
+// Structural print of a tagged result against its table -- handle
+// indices differ between the oracle run and the riscv run (each
+// allocates independently), so results compare by content, not word.
+std::string decode_str(s7::HostBignumTable& table, int64_t tagged) {
+  if ((tagged & 7) == 0) return std::to_string(tagged >> 3);
+  if (tagged == s7::kTrue) return "#t";
+  if (tagged == s7::kFalse) return "#f";
+  if (tagged == s7::kNil) return "()";
+  if ((tagged & 7) == s7::kHandleTag) {
+    const s7::HostValue& v = table.deref(tagged);
+    switch (v.kind) {
+      case s7::HostValue::Kind::Bignum: return "#<bignum>";
+      case s7::HostValue::Kind::List: {
+        std::string out = "(";
+        for (size_t i = 0; i < v.items.size(); ++i) {
+          if (i) out += " ";
+          out += decode_str(table, v.items[i]);
+        }
+        return out + ")";
+      }
+      case s7::HostValue::Kind::Tuple: return "#<tuple:" + std::to_string(v.items.size()) + ">";
+      case s7::HostValue::Kind::Map: return "#<map:" + std::to_string(v.entries.size()) + ">";
+      case s7::HostValue::Kind::Binary: return "\"" + v.bytes + "\"";
+      case s7::HostValue::Kind::Atom: return "'" + v.bytes;
+    }
+  }
+  return "#<closure-or-unknown>";
+}
+
+// Handle-value tests: arguments are built into a host table per
+// execution path (the table is stateful -- cdr/cons allocate).
+struct ValueTest {
+  const char* name;
+  const char* source;
+  const char* entry;
+  std::vector<int64_t> (*build_args)(s7::HostBignumTable&);
+  const char* expected;  // decode_str form
+};
 
 }  // namespace
 
@@ -146,6 +188,78 @@ int main() {
        "main", {}, s7::kTrue},
   };
 
+  const std::vector<ValueTest> value_tests = {
+      {"sum-list",
+       "(define (sum l) (if (null? l) 0 (+ (car l) (sum (cdr l)))))",
+       "sum",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{t.make_list({s7::tag_fixnum(1), s7::tag_fixnum(2),
+                                                  s7::tag_fixnum(3), s7::tag_fixnum(4),
+                                                  s7::tag_fixnum(5)})};
+       },
+       "15"},
+      {"length-and-ref",
+       "(define (main l) (+ (length l) (list-ref l 1)))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{
+             t.make_list({s7::tag_fixnum(10), s7::tag_fixnum(20), s7::tag_fixnum(30)})};
+       },
+       "23"},
+      {"pair-predicates",
+       "(define (main l) (and (pair? l) (not (pair? 5)) (null? (cdr (cons 1 (list))))))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{t.make_list({s7::tag_fixnum(1)})};
+       },
+       "#t"},
+      {"list-ctor-roundtrip",
+       "(define (main a b) (cons a (list b 3)))",
+       "main",
+       [](s7::HostBignumTable&) {
+         return std::vector<int64_t>{s7::tag_fixnum(1), s7::tag_fixnum(2)};
+       },
+       "(1 2 3)"},
+      {"tuple-ops",
+       "(define (main t) (+ (vector-ref t 1) (vector-length t)))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{
+             t.make_tuple({s7::tag_fixnum(7), s7::tag_fixnum(40), s7::tag_fixnum(9)})};
+       },
+       "43"},
+      {"map-hit-and-miss",
+       "(define (main m k) (if (hash-table-ref m k) (hash-table-ref m k) -1))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         int64_t m = t.make_map({{t.make_atom("hp"), s7::tag_fixnum(100)},
+                                 {t.make_atom("mp"), s7::tag_fixnum(30)}});
+         return std::vector<int64_t>{m, t.make_atom("hp")};
+       },
+       "100"},
+      {"map-miss-is-false",
+       "(define (main m k) (hash-table-ref m k))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         int64_t m = t.make_map({{t.make_atom("hp"), s7::tag_fixnum(100)}});
+         return std::vector<int64_t>{m, t.make_atom("armor")};
+       },
+       "#f"},
+      {"binary-size",
+       "(define (main b) (string-length b))",
+       "main",
+       [](s7::HostBignumTable& t) { return std::vector<int64_t>{t.make_binary("hello")}; },
+       "5"},
+      {"atom-eq-interned",
+       "(define (main a b c) (and (eq? a b) (not (eq? a c))))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{t.make_atom("fire"), t.make_atom("fire"),
+                                     t.make_atom("water")};
+       },
+       "#t"},
+  };
+
   int failures = 0;
   for (const TestCase& test : tests) {
     try {
@@ -170,11 +284,44 @@ int main() {
     }
   }
 
+  for (const ValueTest& test : value_tests) {
+    try {
+      s7::Compiled compiled = s7::compile(test.source);
+      int func_index = compiled.ir.find(test.entry);
+      if (func_index < 0) throw std::runtime_error("entry function not found");
+
+      // Each execution path gets its own table: handle indices diverge
+      // as the run allocates, so results compare structurally.
+      s7::HostBignumTable oracle_table;
+      std::vector<int64_t> oracle_args = test.build_args(oracle_table);
+      int64_t oracle =
+          s7::interpret(compiled.ir, func_index, oracle_args, 50'000'000, &oracle_table);
+      std::string oracle_str = decode_str(oracle_table, oracle);
+
+      s7::HostBignumTable machine_table;
+      std::vector<int64_t> machine_args = test.build_args(machine_table);
+      int64_t machine = run_riscv(compiled.elf, test.entry, machine_args, &machine_table);
+      std::string machine_str = decode_str(machine_table, machine);
+
+      if (oracle_str != test.expected || machine_str != test.expected) {
+        fprintf(stderr, "FAIL %-20s expected=%s oracle=%s riscv=%s\n", test.name, test.expected,
+                oracle_str.c_str(), machine_str.c_str());
+        failures++;
+      } else {
+        printf("ok   %-20s -> %s (oracle == riscv == expected)\n", test.name, test.expected);
+      }
+    } catch (const std::exception& e) {
+      fprintf(stderr, "FAIL %-20s exception: %s\n", test.name, e.what());
+      failures++;
+    }
+  }
+
+  size_t total = tests.size() + value_tests.size();
   if (failures > 0) {
-    fprintf(stderr, "FAIL: %d of %zu tests failed\n", failures, tests.size());
+    fprintf(stderr, "FAIL: %d of %zu tests failed\n", failures, total);
     return 1;
   }
   printf("PASS: all %zu s7-compiler tests agree across IR oracle, libriscv execution, and expected values\n",
-         tests.size());
+         total);
   return 0;
 }
