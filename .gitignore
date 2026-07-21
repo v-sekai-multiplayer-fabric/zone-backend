@@ -56,3 +56,12 @@ result
 .elixir_ls
 .elixir-tools
 priv/pow_cache.dets
+
+# Native build outputs (root Makefile: taskweft_nif + weft sandbox guest/NIF)
+priv/libtaskweft_nif.dll
+priv/libtaskweft_nif.so
+priv/weft_sandbox_nif.dll
+priv/weft_sandbox_nif.so
+priv/weft_guest.elf
+c_src/guest/*.o
+/build/

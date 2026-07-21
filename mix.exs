@@ -9,11 +9,26 @@ defmodule Uro.MixProject do
       version: "0.1.0",
       elixir: ">= 1.16.3",
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [] ++ Mix.compilers(),
+      compilers: [:elixir_make] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps()
-    ]
+    ] ++ make_options()
+  end
+
+  # taskweft_nif's C++20 planner NIF (lib/taskweft/nif.ex, c_src/taskweft_nif.cpp,
+  # standalone/) and weft_warp_burrito's sandbox NIF (lib/weft_warp_burrito/*,
+  # c_src/{guest,nif,thirdparty}) were both extracted directly into this app --
+  # a single root Makefile builds both. mingw32-make on Windows (matches
+  # weft_warp_burrito's own former mix.exs -- its CMake+Ninja+RISC-V recipe was
+  # only ever GNU Make syntax, no MSVC/nmake port exists for it).
+  defp make_options do
+    base = [make_env: fn -> %{"FINE_INCLUDE_DIR" => Fine.include_dir()} end]
+
+    case :os.type() do
+      {:win32, _} -> base ++ [make_executable: "mingw32-make"]
+      _ -> base
+    end
   end
 
   # Configuration for the OTP application.
@@ -43,20 +58,7 @@ defmodule Uro.MixProject do
   #
   # Type `mix help deps` for examples and options.
   defp deps do
-    common_deps() ++ dev_evaluation_deps()
-  end
-
-  # weft_warp_burrito hardcodes mingw32-make and requires Elixir ~> 1.20 in its
-  # own mix.exs, so it cannot compile on this org's Linux CI runners regardless
-  # of MIX_ENV -- Mix compiles every declared dependency unconditionally. Kept
-  # out of CI entirely (GitHub Actions always sets CI=true) while still being
-  # fetchable for local :dev evaluation, per docs/decisions/0013.
-  defp dev_evaluation_deps do
-    if System.get_env("CI") do
-      []
-    else
-      [{:weft_warp_burrito, github: "weftspun/weft-warp-burrito", only: :dev, runtime: false}]
-    end
+    common_deps()
   end
 
   defp common_deps do
@@ -94,7 +96,8 @@ defmodule Uro.MixProject do
       {:hammer, "~> 6.0"},
       {:scrivener_ecto, "~> 3.1"},
       {:ex_marcel, "~> 0.1.0"},
-      {:taskweft, github: "V-Sekai-fire/multiplayer-fabric-taskweft"},
+      {:elixir_make, "~> 0.10", runtime: false},
+      {:fine, "~> 0.1", runtime: false},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
       {:mox, "~> 1.1", only: :test},

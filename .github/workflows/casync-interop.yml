@@ -59,6 +59,14 @@ jobs:
             -C /usr/local/bin desync
           desync help
 
+      - name: Install RISC-V toolchain (xpack riscv-none-elf-gcc)
+        run: |
+          curl -fsSL -o /tmp/riscv-gcc.tar.gz \
+            https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v15.2.0-1/xpack-riscv-none-elf-gcc-15.2.0-1-linux-x64.tar.gz
+          mkdir -p /opt/riscv-none-elf-gcc
+          tar -xzf /tmp/riscv-gcc.tar.gz -C /opt/riscv-none-elf-gcc --strip-components=1
+          echo "/opt/riscv-none-elf-gcc/bin" >> $GITHUB_PATH
+
       - name: Install Mix dependencies
         run: mix deps.get
 
