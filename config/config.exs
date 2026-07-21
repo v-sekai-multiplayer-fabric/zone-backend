@@ -160,8 +160,8 @@ config :uro, :stale_zone_cutoff,
 
 config :uro, :stale_zone_interval, 30 * 24 * 60 * 60 * 1000
 
-config :uro, :rebac_adapter, Uro.ReBAC.TaskweftAdapter
-config :uro, :planner_adapter, Uro.Planner.TaskweftAdapter
+config :uro, :rebac_adapter, Uro.ReBAC.SandboxAdapter
+config :uro, :planner_adapter, Uro.Planner.SandboxAdapter
 
 config :uro, Uro.Turnstile,
   secret_key:

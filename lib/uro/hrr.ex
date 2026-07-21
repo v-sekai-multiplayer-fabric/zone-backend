@@ -6,11 +6,12 @@ defmodule Uro.Hrr do
   Architecture primitives (Plate 1995; bipolar MAP-B variant, per Kanerva
   2009's survey of VSA families).
 
-  No NIF, no cross-language boundary: `taskweft` ships a real, tested HRR
-  (`Taskweft.NIF`, phase-based) already available as a `zone-backend`
-  dependency, but V-Sekai is actively replacing `taskweft` with the s7
-  stack in `weft-warp-loop` -- adding a new dependency on it here would
-  work against that migration. A Lean4-verified core
+  No NIF, no cross-language boundary. A separate phase-based HRR exists
+  as `Uro.Planner.HRR` (RFD 0032, ported from the now-retired
+  `standalone/tw_hrr.hpp`) for planner fact retrieval -- that module's
+  algebra is deliberately not reused here, since this one is bipolar
+  MAP-B, a different VSA family for a different purpose (semantic
+  tagging, not retrieval scoring). A Lean4-verified core
   (`openusd-fabric/lean/Fabric/HRR.lean`, same algorithm, fixed-point) was
   built first and stays as a real, independently-verified artifact, but
   routing zone-backend through it would need a NIF bridge with no working

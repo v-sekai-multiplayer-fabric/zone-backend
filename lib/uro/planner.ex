@@ -5,5 +5,5 @@ defmodule Uro.Planner do
 
   def plan(domain_json), do: adapter().plan(domain_json)
 
-  defp adapter, do: Application.get_env(:uro, :planner_adapter, Uro.Planner.TaskweftAdapter)
+  defp adapter, do: Application.get_env(:uro, :planner_adapter, Uro.Planner.SandboxAdapter)
 end

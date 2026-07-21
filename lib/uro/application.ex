@@ -37,25 +37,39 @@ defmodule Uro.Application do
     Supervisor.start_link(children, opts)
   end
 
-  # Config-flip (RFD 0022): only boot the compiled-Scheme ReBAC program
-  # when it is actually selected, so environments that keep the default
-  # TaskweftAdapter never depend on priv/rebac.elf existing.
+  # Config-flip (RFD 0022, defaulted on since RFD 0038): only boot the
+  # compiled-Scheme ReBAC program when it is actually selected, so an
+  # environment that overrides :rebac_adapter to something else never
+  # depends on priv/rebac.elf existing.
   defp rebac_sandbox_children do
     if Application.get_env(:uro, :rebac_adapter) == Uro.ReBAC.SandboxAdapter do
       elf = File.read!(Path.join(:code.priv_dir(:uro), "rebac.elf"))
-      [{WeftWarpBurrito.Program, elf: elf, name: Uro.ReBAC.SandboxAdapter.Program}]
+
+      [
+        Supervisor.child_spec(
+          {WeftWarpBurrito.Program, elf: elf, name: Uro.ReBAC.SandboxAdapter.Program},
+          id: Uro.ReBAC.SandboxAdapter.Program
+        )
+      ]
     else
       []
     end
   end
 
-  # Config-flip (RFD 0023): only boot the compiled-Scheme planner program
-  # when it is actually selected, so environments that keep the default
-  # TaskweftAdapter never depend on priv/planner.elf existing.
+  # Config-flip (RFD 0023, defaulted on since RFD 0038): only boot the
+  # compiled-Scheme planner program when it is actually selected, so an
+  # environment that overrides :planner_adapter to something else never
+  # depends on priv/planner.elf existing.
   defp planner_sandbox_children do
     if Application.get_env(:uro, :planner_adapter) == Uro.Planner.SandboxAdapter do
       elf = File.read!(Path.join(:code.priv_dir(:uro), "planner.elf"))
-      [{WeftWarpBurrito.Program, elf: elf, name: Uro.Planner.SandboxAdapter.Program}]
+
+      [
+        Supervisor.child_spec(
+          {WeftWarpBurrito.Program, elf: elf, name: Uro.Planner.SandboxAdapter.Program},
+          id: Uro.Planner.SandboxAdapter.Program
+        )
+      ]
     else
       []
     end

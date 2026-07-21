@@ -2,12 +2,16 @@
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
 defmodule Uro.Planner.SandboxAdapterDifferentialTest do
   @moduledoc """
-  Differential testing for RFD 0023 (Stage 5A): every domain here runs
-  through both `Uro.Planner.TaskweftAdapter` (the native `tw_loader.hpp`
-  + `tw_planner.hpp` NIF) and `Uro.Planner.SandboxAdapter` (compiled
-  Scheme in the libriscv guest -- the whole HTN search AND domain
-  evaluation, not just a search-only subset) and must agree, proving the
-  port before any config-flip in production traffic. Every domain uses
+  Regression suite for `Uro.Planner.SandboxAdapter` (compiled Scheme in
+  the libriscv guest, RFD 0023 -- Stage 5A: the whole HTN search AND
+  domain evaluation, not just a search-only subset).
+
+  These cases originally ran through both `Uro.Planner.TaskweftAdapter`
+  (the native `tw_loader.hpp` + `tw_planner.hpp` NIF) and
+  `Uro.Planner.SandboxAdapter`, asserting agreement, to prove the port
+  before the RFD 0038 config-flip that made the sandbox adapter the
+  only one. The native adapter is now retired, so each case just pins
+  the plan that comparison already proved correct. Every domain uses
   the CURRENT loader schema (variables/actions/methods/todo_list), not
   the stale `priv/domains/*.jsonld` schema (a separate, pre-existing bug
   per RFD 0023's Context section).
@@ -15,40 +19,24 @@ defmodule Uro.Planner.SandboxAdapterDifferentialTest do
   use ExUnit.Case, async: true
 
   alias Uro.Planner.SandboxAdapter
-  alias Uro.Planner.TaskweftAdapter
 
-  setup do
-    elf_path = Path.join(:code.priv_dir(:uro), "planner.elf")
+  # SandboxAdapter.Program is booted globally by Uro.Application, since
+  # RFD 0038 made Uro.Planner.SandboxAdapter the default :planner_adapter --
+  # no per-test start_supervised! needed (and starting a second one under
+  # the same name would collide with the already-running one).
 
-    start_supervised!(
-      {WeftWarpBurrito.Program, elf: File.read!(elf_path), name: SandboxAdapter.Program}
-    )
-
-    :ok
-  end
-
-  defp run(adapter, domain_json) do
-    {:ok, adapter.plan(domain_json)}
+  defp run(domain_json) do
+    {:ok, SandboxAdapter.plan(domain_json)}
   rescue
     _ -> :no_plan
   end
 
-  defp assert_agrees(domain_json) do
-    native = run(TaskweftAdapter, domain_json)
-    sandboxed = run(SandboxAdapter, domain_json)
-
-    normalized_native = normalize(native)
-    normalized_sandboxed = normalize(sandboxed)
-
-    assert normalized_native == normalized_sandboxed,
-           "adapters disagree: native=#{inspect(normalized_native)} " <>
-             "sandbox=#{inspect(normalized_sandboxed)}"
-
-    normalized_native
+  defp plan_for(domain_json) do
+    case run(domain_json) do
+      :no_plan -> :no_plan
+      {:ok, json} -> Jason.decode!(json)
+    end
   end
-
-  defp normalize(:no_plan), do: :no_plan
-  defp normalize({:ok, json}), do: Jason.decode!(json)
 
   @behave_domain """
   {
@@ -75,15 +63,15 @@ defmodule Uro.Planner.SandboxAdapterDifferentialTest do
   """
 
   test "compound task picks the checked alternative when threat is near" do
-    assert [["flee"], ["recover"]] = assert_agrees(@behave_domain)
+    assert [["flee"], ["recover"]] = plan_for(@behave_domain)
   end
 
   test "compound task falls back when the checked alternative's guard fails" do
     domain = String.replace(@behave_domain, ~s("near": true), ~s("near": false))
-    assert [["drift"]] = assert_agrees(domain)
+    assert [["drift"]] = plan_for(domain)
   end
 
-  test "goal with no registered method is a clean no-plan on both adapters" do
+  test "goal with no registered method is a clean no-plan" do
     domain = """
     {
       "variables": [{"name": "loc", "init": {"pos": "open"}}],
@@ -91,7 +79,7 @@ defmodule Uro.Planner.SandboxAdapterDifferentialTest do
     }
     """
 
-    assert :no_plan = assert_agrees(domain)
+    assert :no_plan = plan_for(domain)
   end
 
   test "multigoal backtracks over both unmet bindings" do
@@ -115,7 +103,7 @@ defmodule Uro.Planner.SandboxAdapterDifferentialTest do
     }
     """
 
-    assert [["recover"], ["flee"]] = assert_agrees(domain)
+    assert [["recover"], ["flee"]] = plan_for(domain)
   end
 
   test "a goal whose method under-satisfies it forces a retry (splice-order proof)" do
@@ -139,7 +127,7 @@ defmodule Uro.Planner.SandboxAdapterDifferentialTest do
     }
     """
 
-    assert [["bump"], ["bump"], ["bump"]] = assert_agrees(domain)
+    assert [["bump"], ["bump"], ["bump"]] = plan_for(domain)
   end
 
   test "a long flat sequence of independent primitive actions costs no branching fuel" do
@@ -152,7 +140,7 @@ defmodule Uro.Planner.SandboxAdapterDifferentialTest do
     }
     """
 
-    assert plan = assert_agrees(domain)
+    assert plan = plan_for(domain)
     assert length(plan) == 50
   end
 end

@@ -5,8 +5,8 @@ defmodule Uro.Ports.ReBAC do
   Output port for relationship-based access control checks.
 
   Implement this behaviour in an adapter to supply a ReBAC engine. The
-  default adapter is `Uro.ReBAC.TaskweftAdapter` (wraps `Taskweft.ReBAC`).
-  Tests can inject a Mox mock via
+  default adapter is `Uro.ReBAC.SandboxAdapter` (compiled Scheme running
+  in the libriscv guest, RFD 0022). Tests can inject a Mox mock via
   `Application.put_env(:uro, :rebac_adapter, Uro.ReBACMock)`.
   """
 
