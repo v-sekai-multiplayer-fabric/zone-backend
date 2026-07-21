@@ -1,8 +1,8 @@
 ---
 authors: K. S. Ernest (iFire) Lee <ernest.lee@chibifire.com>
-state: ideation
+state: discussion
 discussion: N/A -- not yet reviewed
-labels: sandbox, godot, ideation
+labels: sandbox, godot, determinism, lockstep
 ---
 
 # 0040 Should zone-backend adopt the godot-sandbox guest API surface, and does `lib_godot_connector` belong here?
@@ -84,55 +84,172 @@ untrusted-content guest program." **This request may be exactly that
 future case arriving** -- or it may not be; that's the open question
 this RFD exists to name rather than assume.
 
-## Open questions (not yet answered)
+## Question 1, answered: bit-exact client/server lockstep execution
 
-1. **What's the actual driving use case?** zone-backend is a headless
-   Phoenix API backend with no live Godot process of its own (`grep`
-   confirms no Godot engine dependency anywhere in `mix.exs`). Item 2's
-   API surface (`Node`, `CanvasItem`, `Timer`, scene-tree manipulation)
-   only means something inside an actual running Godot process/editor
-   -- i.e. **on the client/game side**, not this backend. Concretely:
-   is the ask (a) zone-backend should be able to *validate or simulate*
-   guest programs written against this API surface (e.g. a CI/tooling
-   role, never actually executing inside a live scene tree), (b) some
-   future zone-backend capability needs to *produce* godot-sandbox ELFs
-   for the game client to run (the `bigassm`-on-sandbox pattern:
-   compile something server-side into a guest ELF the client then
-   executes), or (c) something else? The RFD can't respond to none of
-   the three intended without this.
-2. **Does `lib_godot_connector` actually apply here, given it's the
-   LibGodot shape (item 4) and this request's other three items are
-   all the godot-sandbox shape?** If the goal is "run/inspect a Godot
-   process from BEAM directly," that's a `lib_godot_connector`-shaped
-   problem, disconnected from `WeftWarpBurrito.Program`/godot-sandbox
-   entirely -- worth stating plainly rather than trying to force one
-   package to serve both shapes.
-3. **"Must only clone the exposed surface area"** -- confirmed narrow:
-   `modules/sandbox/program/cpp/api` is the guest-linkable API only
-   (not `modules/sandbox`'s host-side NIF/editor-integration code,
-   which is Godot-engine-internal and has no BEAM-side counterpart to
-   speak to). Vendoring that one directory (mirroring how
-   `c_src/thirdparty/libriscv` is already vendored) is mechanically
-   straightforward once (1) is answered -- it isn't itself the hard
-   part of this RFD.
-4. **Does `taskweft/godotweft`'s Lean taxonomy get consumed, or just
-   referenced?** Its `KnownMethods` categorization and the
-   `godot-sandbox-elf.jsonld`/`planweft-riscv-asm.jsonld` vocabularies
-   look like they'd matter most for validating that a guest program
-   only calls methods the sandbox actually implements (item 2 doesn't
-   expose 100% of the GDExtension API -- only what's in that `api/`
-   directory) -- but that's speculative without knowing the driving
-   use case from (1).
+The driving use case: **the server must execute the same simulation
+logic the Godot client executes and get bit-for-bit identical results**
+-- deterministic lockstep, where zone-backend is not a passive observer
+of client-reported state but an independent, authoritative re-executor
+of it. This rules in and rules out several things at once:
+
+- **Not (a) "CI/tooling validation only."** The server needs to
+  actually *run* the guest program's logic at request time (during
+  live play), not just lint it ahead of time.
+- **Not quite (b) either.** The point isn't "server produces an ELF for
+  the client to run" -- it's that **the same ELF** (however it's
+  produced) needs to execute identically wherever it runs, client or
+  server. Whichever side compiles it, both sides load and run the exact
+  same guest program.
+- **This is exactly the shape `WeftWarpBurrito.Program` already
+  provides -- and exactly why RFD 0039 kept it.** A fixed RISC-V ISA
+  interpreted by libriscv is a single, reproducible execution substrate
+  *regardless of the host CPU* running the interpreter. That's the
+  whole reason this is more promising than it looks at first glance:
+  ordinary cross-platform floating point (x86 vs. ARM, different libm
+  versions, different compiler codegen) is famously **not**
+  bit-reproducible, which is precisely the problem lockstep networking
+  needs solved. Executing the identical guest ELF through the identical
+  interpreter on both ends sidesteps that problem entirely, as long as
+  the *host-call trampoline* (RFD 0018) doesn't reintroduce
+  non-determinism of its own.
+
+This directly answers Question 2 as well, more strongly than the
+original framing: **`lib_godot_connector` is actively the wrong tool for
+this goal**, not just a mismatched shape. It embeds the real Godot
+engine natively per-host -- exactly the "different CPU, different libm,
+different codegen" non-determinism a lockstep design must avoid. The
+RISC-V-sandboxed guest-execution shape isn't merely a stylistic fit
+here; it's the one property (bit-identical execution regardless of host
+platform) that makes this problem tractable at all.
+
+## The real open technical question this surfaces
+
+`WeftWarpBurrito.Program`'s tagged-GuestValue ABI (`lib/weft_warp_burrito/
+program.ex`, `c_src/nif/weft_sandbox_nif.cpp`) **has no floating-point
+support today** -- confirmed by grep, zero hits for `float`/`Float` in
+either file. Every godot-sandbox API type in item 2
+(`Vector2/3/4`, `Basis`, `Quaternion`, `Transform2D/3D`, `Rect2`, `Plane`)
+is float-based; `Variant` itself carries floats as one of its core
+scalar kinds. RFD 0018's original design notes always described a
+`Float64` GuestValue variant as part of the plan, but -- confirmed by
+reading the actual retired `c_src/s7/value.h` history and the current
+`program.ex` -- it was never implemented, because neither prior
+consumer (ReBAC graphs, planner domains, both RFD 0039) needed floats.
+**This is the actual unresolved design question a follow-on RFD needs
+to own**: not "should GuestValue support floats" (yes, self-evidently,
+for this use case) but "how is float *determinism* itself guaranteed" --
+IEEE 754 arithmetic is bit-reproducible only when both sides commit to
+the same rounding mode, the same operation ordering, and no fused-
+multiply-add-style codegen differences sneak in through the RISC-V
+compiler backend used to produce the guest ELF in the first place.
+This is squarely where `taskweft/godotweft`'s Lean taxonomy (item 3)
+plausibly becomes load-bearing rather than reference-only: a formal
+description of exactly which GDExtension operations are safe to treat
+as deterministic primitives is a natural artifact to check the eventual
+implementation against.
+
+## Guest-program language is a separate, still-open choice
+
+The sandbox contract is "compiles to a RISC-V ELF that libriscv can
+execute" -- nothing about that contract mandates a source language.
+Item 2's reference API surface happens to be C++ because that's what
+upstream `libriscv/godot-sandbox` guest programs are conventionally
+written in, but this org already retired one purpose-built guest
+language this same session (RFD 0039: the s7-Scheme subset compiler,
+`c_src/s7`), specifically because it was never worth the machinery for
+its actual callers. Picking a guest language for *this* use case is
+worth doing deliberately rather than defaulting to "whatever the
+reference implementation uses" -- **and the criterion is narrower than
+generic memory safety**: this guest program (unlike RFD 0039's retired
+ReBAC/planner content) processes input an active adversary controls.
+Even dev-authored, trusted simulation *logic* still needs to survive a
+malicious client crafting inputs specifically to trigger memory-safety
+or UB bugs in that logic -- libriscv's own sandbox (gas metering,
+memory bounds) contains the *blast radius* of such a bug, but doesn't
+prevent the bug from existing or from being a real, exploitable
+divergence-inducing (or crashing) path in the first place. That's a
+materially different bar than "pick whatever's convenient":
+
+- **C/C++**: matches item 2 directly -- zero translation friction to
+  vendor and call its API surface as-is. Weakest safety guarantee
+  against exactly this threat model of the candidates: memory-safety
+  bugs (UB, uninitialized reads, overflow) are this language's most
+  common attacker-facing surface, and cross-platform floating-point
+  non-determinism (see above) is a second, independent hazard
+  (implicit promotions, easy-to-miss `-ffast-math`/FMA-contraction
+  compiler flags).
+- **Rust**: has a mature `riscv64gc-unknown-none-elf`/Linux target.
+  Its safe subset rules out the memory-safety half of the threat model
+  by construction (no UB from a crafted input triggering a bounds/
+  aliasing violation in safe code); `fp-contract` behavior is at least
+  explicit and auditable rather than implicit.
+- **Lean4**: matches this org's own existing verification-first
+  tooling directly -- `taskweft/godotweft`'s Lean `KnownMethods`
+  taxonomy, `fire/plausible-witness-dag` (below), and RFD 0026's own
+  precedent of Lean-verified reducers for loot/combat/progression, all
+  already exist. A formally verified guest program is the strongest
+  answer to "safe against active attack" available in principle (a
+  proven absence of a whole bug class beats "no one's found one yet"),
+  but whether Lean4's compiled output (it compiles to C, then native
+  code) can plausibly run as a *freestanding* libriscv guest at all --
+  no OS, no libc assumptions the runtime doesn't already make explicit
+  -- is a genuine, unverified technical question. It has never been
+  tried by any resource this RFD references.
+- **Formal methods more generally, on top of any of the above**: the
+  language choice and the verification-rigor choice are actually two
+  separate axes, not one -- a Lean4-*specified* determinism/safety
+  property could in principle be discharged against a C, Rust, *or*
+  Lean4 implementation (e.g. via a verified compiler pipeline, or a
+  reference-vs-implementation equivalence proof), not only by writing
+  the guest program in Lean4 itself. Which combination is worth the
+  effort is exactly the kind of question a follow-on RFD should answer
+  with a concrete threat model in hand, not this one.
+
+No candidate is picked here. This is recorded as its own open question,
+separate from the ABI/API-surface question above, with the threat model
+now stated explicitly (safety against a crafted-input active attacker,
+not just "safer by default") -- the follow-on RFD should make this
+choice against that stated bar rather than let a default win by
+omission.
+
+## Verification tooling: `fire/plausible-witness-dag`
+
+Directly relevant to the float-determinism question above, and worth
+recording now while it's fresh: this org already owns
+`fire/plausible-witness-dag`, a small Lean/Lake library (factored out of
+Flowref) for **plausible-driven iterative-deepening witness search** --
+domain code supplies a deterministic walk function and a candidate
+predicate over `Fin`-bounded random candidates (via
+`leanprover-community/plausible`, the Lean4 QuickCheck-style property
+tester -- the Lean-ecosystem sibling of Elixir's PropCheck/StreamData,
+matching this session's own already-stated PropCheck-over-StreamData
+preference), and `resolve` climbs a ladder of increasing search budgets
+("levels": `walkSteps`/`finBound`/`numInst`) until a witness is found or
+budgets are exhausted (confirmed by reading its actual
+`PlausibleWitnessDag/Examples.lean`, a 3-/5-gallon water-jug puzzle
+solved this way -- not assumed from the README alone).
+
+This is a plausible, concrete fit for certifying (not formally proving)
+that a specific godot-sandbox math primitive is deterministic: define
+the primitive's Lean4 model as the deterministic walk, a candidate
+predicate that flags any input where two independently-computed
+results diverge, and let `plausible-witness-dag` search increasingly
+large `Fin`-bounded input spaces for a counterexample. Finding none
+within a budget is evidence, not proof -- exactly the same honest
+caveat property-based testing always carries, and consistent with this
+tool's own name ("plausible," not "certain"). Whether this is the right
+level of rigor for lockstep-critical code (vs. an actual Lean4 proof of
+the determinism property) is itself part of the follow-on RFD's job,
+not decided here.
 
 ## Non-decision
 
-No implementation decision is made here. This RFD exists so the
-question and the four resources it references are recorded accurately
-(their real contents, not assumptions) before any cloning, vendoring,
-or dependency work happens. Once (1) is answered, a follow-on RFD
-should cover the actual chosen shape -- likely one of: "vendor
-`modules/sandbox/program/cpp/api` for guest-program validation/CI,"
-"add a godot-sandbox-shaped `WeftWarpBurrito` guest capability for a
-concrete new feature," or "evaluate `lib_godot_connector` for a
-separate LibGodot-shaped need" -- rather than one RFD trying to resolve
-all three at once.
+No implementation decision is made here -- Question 1 has a clear
+answer now, but the "how" (GuestValue float support, the determinism
+contract across the host-call trampoline, which subset of the
+godot-sandbox API surface a lockstep guest program actually needs vs.
+the scene-tree-only calls like `Node`/`CanvasItem`/`Timer` that don't
+mean anything without a live tree, which guest language to write it in,
+and whether/how `plausible-witness-dag`-style certification factors in)
+is real, non-trivial design work this RFD doesn't attempt to resolve
+inline. A follow-on RFD should cover the concrete design once scoped.
