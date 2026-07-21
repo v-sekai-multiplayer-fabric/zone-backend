@@ -12,7 +12,7 @@ defmodule Uro.VSekai.EntityPlannerTest do
 
   setup do
     Application.put_env(:uro, :planner_adapter, Uro.PlannerMock)
-    on_exit(fn -> Application.put_env(:uro, :planner_adapter, Uro.Planner.TaskweftAdapter) end)
+    on_exit(fn -> Application.put_env(:uro, :planner_adapter, Uro.Planner.SandboxAdapter) end)
     :ok
   end
 

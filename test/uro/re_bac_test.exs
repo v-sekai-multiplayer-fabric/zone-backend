@@ -15,7 +15,7 @@ defmodule Uro.ReBACTest do
 
   setup do
     Application.put_env(:uro, :rebac_adapter, Uro.ReBACMock)
-    on_exit(fn -> Application.put_env(:uro, :rebac_adapter, Uro.ReBAC.TaskweftAdapter) end)
+    on_exit(fn -> Application.put_env(:uro, :rebac_adapter, Uro.ReBAC.SandboxAdapter) end)
     :ok
   end
 

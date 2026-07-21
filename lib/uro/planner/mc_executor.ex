@@ -6,8 +6,8 @@ defmodule Uro.Planner.MCExecutor do
   same reasoning as `Uro.Planner.Replan` (RFD 0030): domain actions are
   an injected `%{name => (state, args -> state | nil)}` map (matching
   `Replan`'s own `action_fn` contract) rather than re-deriving domain
-  loading, since that's `Uro.Planner.TaskweftAdapter`/
-  `Uro.Planner.SandboxAdapter`'s job, not this module's.
+  loading, since that's `Uro.Planner.SandboxAdapter`'s job, not this
+  module's.
 
   Unlike the original, this module does NOT round-trip state through
   JSON strings -- state is a plain map throughout, and each step's

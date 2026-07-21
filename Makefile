@@ -7,11 +7,10 @@ else
   NIF_EXT = so
   EXE =
 endif
-NIF_SO   = $(PRIV_DIR)/libtaskweft_nif.$(NIF_EXT)
 SANDBOX_NIF_SO = $(PRIV_DIR)/weft_sandbox_nif.$(NIF_EXT)
 
 CXXFLAGS = -std=gnu++20 -O2 -fPIC -fvisibility=hidden
-CPPFLAGS = -I$(ERTS_INCLUDE_DIR) -Istandalone
+CPPFLAGS = -I$(ERTS_INCLUDE_DIR)
 
 ifeq ($(shell uname -s),Darwin)
   LDFLAGS = -undefined dynamic_lookup
@@ -21,13 +20,10 @@ endif
 
 RISCV_GCC := riscv-none-elf-gcc
 
-all: $(NIF_SO) guest nif s7fixtures
+all: guest nif s7fixtures
 
 $(PRIV_DIR):
 	mkdir -p $(PRIV_DIR)
-
-$(NIF_SO): c_src/taskweft_nif.cpp | $(PRIV_DIR)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -shared $< -o $@ $(LDFLAGS)
 
 # weft_warp_burrito's sandbox: RISC-V guest ELF (xpack riscv-none-elf-gcc,
 # newlib) plus the host-native NIF (CMake+Ninja, wrapping libriscv::Machine).
@@ -68,6 +64,6 @@ s7fixtures: | $(PRIV_DIR)
 	build/s7c$(EXE) c_src/s7/fixtures/planner.scm -o $(PRIV_DIR)/planner.elf
 
 clean:
-	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf $(PRIV_DIR)/rebac.elf $(PRIV_DIR)/planner.elf
+	rm -f $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf $(PRIV_DIR)/rebac.elf $(PRIV_DIR)/planner.elf
 	rm -f c_src/guest/*.o
 	rm -rf build

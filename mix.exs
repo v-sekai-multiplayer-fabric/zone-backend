@@ -16,12 +16,15 @@ defmodule Uro.MixProject do
     ] ++ make_options()
   end
 
-  # taskweft_nif's C++20 planner NIF (lib/taskweft/nif.ex, c_src/taskweft_nif.cpp,
-  # standalone/) and weft_warp_burrito's sandbox NIF (lib/weft_warp_burrito/*,
-  # c_src/{guest,nif,thirdparty}) were both extracted directly into this app --
-  # a single root Makefile builds both. mingw32-make on Windows (matches
-  # weft_warp_burrito's own former mix.exs -- its CMake+Ninja+RISC-V recipe was
-  # only ever GNU Make syntax, no MSVC/nmake port exists for it).
+  # weft_warp_burrito's sandbox NIF (lib/weft_warp_burrito/*,
+  # c_src/{guest,nif,thirdparty}) was extracted directly into this app -- a
+  # single root Makefile builds it (plus the s7 AOT compiler and its fixture
+  # ELFs). mingw32-make on Windows (matches weft_warp_burrito's own former
+  # mix.exs -- its CMake+Ninja+RISC-V recipe was only ever GNU Make syntax,
+  # no MSVC/nmake port exists for it). The taskweft_nif.cpp/standalone/
+  # native planner+ReBAC NIF this Makefile used to also build was retired in
+  # RFD 0038, once the compiled-Scheme sandbox adapters (RFD 0022/0023)
+  # became the only ReBAC/planner adapters.
   defp make_options do
     base = [make_env: fn -> %{"FINE_INCLUDE_DIR" => Fine.include_dir()} end]
 

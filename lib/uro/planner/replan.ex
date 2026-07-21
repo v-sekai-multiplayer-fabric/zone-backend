@@ -9,9 +9,10 @@ defmodule Uro.Planner.Replan do
 
   Unlike those, this module does NOT re-derive the actual HTN search
   (`tw_plan`/`tw_plan_with_tree`) a third time -- that search exists
-  today either natively (`Uro.Planner.TaskweftAdapter`) or as compiled
-  Scheme (`Uro.Planner.SandboxAdapter`, RFD 0023), and porting it again
-  to plain Elixir is separate, larger, not-yet-scoped work. Instead the
+  today as compiled Scheme (`Uro.Planner.SandboxAdapter`, RFD 0023,
+  the only planner adapter left since RFD 0038 retired the native
+  NIF), and porting it again to plain Elixir is separate, larger,
+  not-yet-scoped work. Instead the
   planner is an injected dependency (`plan_fn`/`plan_with_tree_fn`),
   matching the original's own `tw_plan`/`tw_plan_with_tree` parameters
   exactly -- this keeps `simulate/3`, `replan/5`, and

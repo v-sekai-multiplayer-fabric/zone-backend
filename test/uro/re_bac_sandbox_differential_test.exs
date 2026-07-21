@@ -2,49 +2,38 @@
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
 defmodule Uro.ReBAC.SandboxAdapterDifferentialTest do
   @moduledoc """
-  Differential testing for RFD 0022 (Stage 4): every case here runs
-  through both `Uro.ReBAC.TaskweftAdapter` (the native `tw_rebac.hpp`
-  NIF) and `Uro.ReBAC.SandboxAdapter` (compiled Scheme in the libriscv
-  guest) and must agree, proving the port before any config-flip in
-  production traffic.
+  Regression suite for `Uro.ReBAC.SandboxAdapter` (compiled Scheme in
+  the libriscv guest, RFD 0022 -- Stage 4 of the sandbox roadmap).
+
+  These cases originally ran through both `Uro.ReBAC.TaskweftAdapter`
+  (the native `tw_rebac.hpp` NIF) and `Uro.ReBAC.SandboxAdapter`,
+  asserting agreement, to prove the port before the RFD 0038 config-flip
+  that made the sandbox adapter the only one. The native adapter is now
+  retired, so each case just pins the value that comparison already
+  proved correct.
   """
   use ExUnit.Case, async: true
 
   alias Uro.ReBAC.SandboxAdapter
-  alias Uro.ReBAC.TaskweftAdapter
 
-  setup do
-    elf_path = Path.join(:code.priv_dir(:uro), "rebac.elf")
+  # SandboxAdapter.Program is booted globally by Uro.Application, since
+  # RFD 0038 made Uro.ReBAC.SandboxAdapter the default :rebac_adapter --
+  # no per-test start_supervised! needed (and starting a second one under
+  # the same name would collide with the already-running one).
 
-    start_supervised!(
-      {WeftWarpBurrito.Program, elf: File.read!(elf_path), name: SandboxAdapter.Program}
-    )
-
-    :ok
-  end
-
-  defp build(adapter, edges) do
-    Enum.reduce(edges, adapter.new_graph(), fn {subj, obj, rel}, graph ->
-      adapter.add_edge(graph, subj, obj, rel)
+  defp build(edges) do
+    Enum.reduce(edges, SandboxAdapter.new_graph(), fn {subj, obj, rel}, graph ->
+      SandboxAdapter.add_edge(graph, subj, obj, rel)
     end)
   end
 
-  defp assert_agrees(edges, subj, rel, obj) do
-    native = build(TaskweftAdapter, edges) |> TaskweftAdapter.check_rel(subj, rel, obj)
-    sandboxed = build(SandboxAdapter, edges) |> SandboxAdapter.check_rel(subj, rel, obj)
-
-    assert native == sandboxed,
-           "adapters disagree for #{inspect({edges, subj, rel, obj})}: " <>
-             "native=#{native} sandbox=#{sandboxed}"
-
-    native
-  end
+  defp check(edges, subj, rel, obj), do: build(edges) |> SandboxAdapter.check_rel(subj, rel, obj)
 
   test "direct edge match" do
     edges = [{"alice", "zone1", "OWNS"}]
-    assert assert_agrees(edges, "alice", "OWNS", "zone1")
-    refute assert_agrees(edges, "bob", "OWNS", "zone1")
-    refute assert_agrees(edges, "alice", "CAN_ENTER", "zone1")
+    assert check(edges, "alice", "OWNS", "zone1")
+    refute check(edges, "bob", "OWNS", "zone1")
+    refute check(edges, "alice", "CAN_ENTER", "zone1")
   end
 
   test "transitive IS_MEMBER_OF inheritance" do
@@ -53,8 +42,8 @@ defmodule Uro.ReBAC.SandboxAdapterDifferentialTest do
       {"avatar_uploaders", "uploads", "HAS_CAPABILITY"}
     ]
 
-    assert assert_agrees(edges, "alice", "HAS_CAPABILITY", "uploads")
-    refute assert_agrees(edges, "bob", "HAS_CAPABILITY", "uploads")
+    assert check(edges, "alice", "HAS_CAPABILITY", "uploads")
+    refute check(edges, "bob", "HAS_CAPABILITY", "uploads")
   end
 
   test "two-deep membership chain" do
@@ -64,22 +53,22 @@ defmodule Uro.ReBAC.SandboxAdapterDifferentialTest do
       {"group_b", "zone1", "CAN_ENTER"}
     ]
 
-    assert assert_agrees(edges, "alice", "CAN_ENTER", "zone1")
+    assert check(edges, "alice", "CAN_ENTER", "zone1")
   end
 
   test "CONTROLS via DELEGATED_TO inversion" do
     edges = [{"zone1", "alice", "DELEGATED_TO"}]
-    assert assert_agrees(edges, "alice", "CONTROLS", "zone1")
-    refute assert_agrees([], "alice", "CONTROLS", "zone1")
+    assert check(edges, "alice", "CONTROLS", "zone1")
+    refute check([], "alice", "CONTROLS", "zone1")
   end
 
   test "empty graph is always false" do
-    refute assert_agrees([], "alice", "OWNS", "zone1")
+    refute check([], "alice", "OWNS", "zone1")
   end
 
   test "membership does not imply an unrelated relation" do
     edges = [{"alice", "group_a", "IS_MEMBER_OF"}]
-    refute assert_agrees(edges, "alice", "OWNS", "zone1")
+    refute check(edges, "alice", "OWNS", "zone1")
   end
 
   test "matches the real-world zone-entry graph shape from Uro.VSekai" do
@@ -88,7 +77,7 @@ defmodule Uro.ReBAC.SandboxAdapterDifferentialTest do
       {"owner-1", "zone-1", "CAN_ENTER"}
     ]
 
-    assert assert_agrees(edges, "owner-1", "CAN_ENTER", "zone-1")
-    refute assert_agrees(edges, "stranger-2", "CAN_ENTER", "zone-1")
+    assert check(edges, "owner-1", "CAN_ENTER", "zone-1")
+    refute check(edges, "stranger-2", "CAN_ENTER", "zone-1")
   end
 end
