@@ -71,3 +71,8 @@ priv/plts/
 # Lake build output (lean/ -- RFD 0043's check_no_fma tool, vendors
 # fire/lean-capstone + a from-source Capstone build via lean/lakefile.lean)
 lean/.lake/
+
+# c_src/thirdparty/build_cassie_native.sh's compiled objects/archive --
+# real geogram/PMP/Eigen sources are vendored (checked in), but their
+# compiled .o/.a output is not.
+c_src/thirdparty/build/

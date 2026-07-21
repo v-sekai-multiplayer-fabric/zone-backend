@@ -1,88 +1,66 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2026-present K. S. Ernest (iFire) Lee
 --
--- `CassieGeogram.Delaunay` — was a pure-Lean constrained Delaunay
--- triangulation (ear clipping + Lawson edge flips), attempted as a
--- replacement for the upstream geogram FFI. Dropped: on the actual
--- hat-fixture boundaries this pipeline produces (hundreds of points),
--- the O(n³) ear-clip/flip approach didn't come close to geogram's
--- real O(n log n) sweep/incremental algorithm — `lake exe cycle_patch`
--- against real fixture data timed out where geogram-backed
--- `cassie_triangulator` returns quickly. Rather than ship a
--- reimplementation that's honest about correctness but not about
--- performance, this is now an explicit "not provided" stub: it
--- type-checks (so the rest of the `CyclePatch`/`SurfaceFair` pipeline
--- still builds) but throws at call time.
+-- `CassieGeogram.Delaunay` — geogram BDEL Delaunay FFI.
 --
--- A real replacement needs an actual O(n log n) planar triangulation
--- algorithm (e.g. a proper incremental/sweep-line constrained
--- Delaunay, not ear clipping) — that's a distinct, larger task from
--- "port the Lean specs," not attempted here. Until then, anything
--- that needs real triangulated output should link the original
--- geogram FFI, not this module.
+-- A pure-Lean reimplementation (ear clipping + Lawson flips) was tried
+-- first and dropped: it couldn't match geogram's real O(n log n)
+-- performance on this pipeline's actual boundary sizes. This restores
+-- the original upstream design instead -- real geogram (BSD-3),
+-- vendored at c_src/thirdparty/geogram (the exact source subset
+-- fabric-godot-core's modules/cassie/SCsub compiles, minus the
+-- AGPL/non-commercial-licensed TetGen/Triangle backends and Voronoi/
+-- CSG/IO code this pipeline never uses), built by
+-- c_src/thirdparty/build_cassie_native.sh into
+-- c_src/thirdparty/build/libcassie_native.a and linked into the
+-- `cycle_patch`/`surface_fair`/`obj_probe` Lean executables via
+-- `moreLinkArgs` (see lean/lakefile.lean). The C wrapper resolving
+-- the `@[extern]` symbols below is
+-- c_src/thirdparty/ffi/cassie_geogram_ffi.cpp.
+--
+-- The minimum surface needed from the geogram side for the
+-- cycle-detect → triangulate → fair pipeline:
+--   - construct a 2D boundary polyline as a constrained delaunay
+--   - refine to a target edge length
+--   - extract vertices + triangles
+--
+-- `cassie_triangulator::triangulate(boundary, edge_length)` already
+-- implements this in C++ — the FFI is a thin re-exposure of that entry
+-- plus the geogram bindings the wrapper relies on.
 
 namespace CassieGeogram
 
-structure Tri where
-  a : Nat
-  b : Nat
-  c : Nat
-  deriving Inhabited, Repr
-
-structure DelaunayMesh where
-  positions : Array (Float × Float × Float)
-  boundaryCount : Nat
-  tris : Array Tri
-  deriving Inhabited
-
+/-- Opaque handle for a heap-allocated geogram Delaunay context. -/
 abbrev DelaunayHandle := USize
 
-initialize delaunayTable : IO.Ref (Array (Option DelaunayMesh)) ← IO.mkRef #[]
+/-- Build a constrained Delaunay from a flat boundary polyline
+    (xyz xyz ...). The input must be a closed loop — the last vertex
+    implicitly connects back to the first. `target_edge_length` sets
+    the BDEL refinement budget. -/
+@[extern "cassie_geogram_delaunay_from_boundary"]
+opaque delaunayFromBoundary (n_pts : USize) (positions : @& FloatArray)
+    (targetEdgeLength : Float) : IO DelaunayHandle
 
-def emptyMesh : DelaunayMesh := { positions := #[], boundaryCount := 0, tris := #[] }
+/-- Release a Delaunay handle. -/
+@[extern "cassie_geogram_delaunay_free"]
+opaque delaunayFree (d : DelaunayHandle) : IO Unit
 
-/-- Not implemented — see module doc. Always throws. -/
-def delaunayFromBoundary (_nPts : USize) (_positions : FloatArray)
-    (_targetEdgeLength : Float) : IO DelaunayHandle :=
-  throw <| IO.userError
-    "CassieGeogram.Delaunay: no pure-Lean implementation (dropped for performance -- see module doc); link the real geogram FFI for triangulated output"
+/-- Number of vertices in the produced triangulation. -/
+@[extern "cassie_geogram_delaunay_n_vertices"]
+opaque nVertices (d : DelaunayHandle) : IO USize
 
-def delaunayFree (d : DelaunayHandle) : IO Unit := do
-  let table ← delaunayTable.get
-  let i := d.toNat
-  if i < table.size then
-    delaunayTable.set (table.set! i none)
+/-- Number of triangles in the produced triangulation. -/
+@[extern "cassie_geogram_delaunay_n_triangles"]
+opaque nTriangles (d : DelaunayHandle) : IO USize
 
-def deref (d : DelaunayHandle) : IO DelaunayMesh := do
-  let table ← delaunayTable.get
-  let i := d.toNat
-  return (table.getD i none).getD emptyMesh
+/-- Copy positions back into a flat float array (xyz xyz ...). The
+    `out` array must be at least `n_vertices d * 3` floats long. -/
+@[extern "cassie_geogram_delaunay_get_positions"]
+opaque getPositions (d : DelaunayHandle) (out : FloatArray) : IO FloatArray
 
-def nVertices (d : DelaunayHandle) : IO USize := do
-  return (← deref d).positions.size.toUSize
-
-def nTriangles (d : DelaunayHandle) : IO USize := do
-  return (← deref d).tris.size.toUSize
-
-def getPositions (d : DelaunayHandle) (out : FloatArray) : IO FloatArray := do
-  let mesh ← deref d
-  let mut out := out
-  for i in [:mesh.positions.size] do
-    let (x, y, z) := mesh.positions[i]!
-    out := out.set! (3*i) x |>.set! (3*i+1) y |>.set! (3*i+2) z
-  return out
-
-def getTriangles (d : DelaunayHandle) (out : ByteArray) : IO ByteArray := do
-  let mesh ← deref d
-  let mut out := out
-  for i in [:mesh.tris.size] do
-    let t := mesh.tris[i]!
-    for (slot, v) in #[(0, t.a), (1, t.b), (2, t.c)] do
-      let off := 12*i + 4*slot
-      out := out.set! off (UInt8.ofNat (v &&& 0xff))
-      out := out.set! (off+1) (UInt8.ofNat ((v >>> 8) &&& 0xff))
-      out := out.set! (off+2) (UInt8.ofNat ((v >>> 16) &&& 0xff))
-      out := out.set! (off+3) (UInt8.ofNat ((v >>> 24) &&& 0xff))
-  return out
+/-- Copy triangle vertex indices back. The `out` ByteArray must be at
+    least `n_triangles d * 3 * 4` bytes long. -/
+@[extern "cassie_geogram_delaunay_get_triangles"]
+opaque getTriangles (d : DelaunayHandle) (out : ByteArray) : IO ByteArray
 
 end CassieGeogram
