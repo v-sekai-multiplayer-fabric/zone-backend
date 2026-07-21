@@ -34,6 +34,17 @@ endif()
 add_executable(verify_guest host_test/verify_guest.cpp)
 target_link_libraries(verify_guest PRIVATE riscv)
 
+# Stage 0 of the Lisp-1 -> RISC-V compiler roadmap (docs/decisions): proves
+# the ir -> riscv_codegen -> elf_builder pipeline produces a working RISC-V
+# ELF with zero external cross-compiler (no riscv-none-elf-gcc) involved.
+add_executable(verify_lisp1
+  host_test/verify_lisp1.cpp
+  lisp1/riscv_codegen.cpp
+  lisp1/elf_builder.cpp
+  lisp1/compiler.cpp
+)
+target_link_libraries(verify_lisp1 PRIVATE riscv)
+
 # The actual NIF the Elixir GenServer loads. ERTS_INCLUDE_DIR is passed
 # in by c_src/Makefile (elixir_make's entry point) - not hardcoded,
 # since it depends on the Erlang install on whatever machine builds
