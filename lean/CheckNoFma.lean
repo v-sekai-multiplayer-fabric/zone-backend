@@ -91,16 +91,15 @@ def checkFile (path : System.FilePath) : IO Bool := do
   | some (off, size, addr) =>
     let code := bytes.extract off (off + size)
     -- riscv64 alone isn't enough: riscv-none-elf-gcc's -march=rv64gc output
-    -- uses both the compressed-instruction extension (CS_MODE_RISCV_C,
-    -- 1<<2) and the float/double extension (CS_MODE_RISCV_FD, 1<<3) --
-    -- without CS_MODE_RISCV_FD specifically, Capstone's RISC-V decoder
-    -- cannot decode F/D-extension instructions (fmadd.d and everything
-    -- else this tool exists to find), and cs_disasm stops at the first
-    -- instruction it can't decode, silently returning 0 instructions
-    -- rather than an error -- confirmed by direct debugging: ELF section
-    -- parsing was byte-for-byte correct (cross-checked against objdump),
-    -- but disasm returned an empty array until these mode bits were added.
-    let mode := Mode.riscv64 ||| Mode.raw ((1 : UInt32) <<< 2) ||| Mode.raw ((1 : UInt32) <<< 3)
+    -- uses both the compressed-instruction and float/double extensions,
+    -- each needing its own cs_mode bit, or Capstone's RISC-V decoder can't
+    -- decode F/D-extension instructions (fmadd.d and everything else this
+    -- tool exists to find) and cs_disasm stops at the first instruction it
+    -- can't decode, silently returning 0 instructions rather than an error
+    -- -- found the hard way (see docs/decisions/0043-*.md), reported and
+    -- fixed upstream as fire/lean-capstone#2, which is what
+    -- Mode.riscvC/Mode.riscvFD below actually are.
+    let mode := Mode.riscv64 ||| Mode.riscvC ||| Mode.riscvFD
     let insns := Capstone.disasm .riscv mode code addr
     let findings := insns.filter (fun i => fmaMnemonics.contains i.mnemonic)
     if findings.isEmpty then
