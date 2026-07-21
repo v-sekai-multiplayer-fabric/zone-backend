@@ -148,6 +148,100 @@ description of exactly which GDExtension operations are safe to treat
 as deterministic primitives is a natural artifact to check the eventual
 implementation against.
 
+## Guest-program language is a separate, still-open choice
+
+The sandbox contract is "compiles to a RISC-V ELF that libriscv can
+execute" -- nothing about that contract mandates a source language.
+Item 2's reference API surface happens to be C++ because that's what
+upstream `libriscv/godot-sandbox` guest programs are conventionally
+written in, but this org already retired one purpose-built guest
+language this same session (RFD 0039: the s7-Scheme subset compiler,
+`c_src/s7`), specifically because it was never worth the machinery for
+its actual callers. Picking a guest language for *this* use case is
+worth doing deliberately rather than defaulting to "whatever the
+reference implementation uses" -- **and the criterion is narrower than
+generic memory safety**: this guest program (unlike RFD 0039's retired
+ReBAC/planner content) processes input an active adversary controls.
+Even dev-authored, trusted simulation *logic* still needs to survive a
+malicious client crafting inputs specifically to trigger memory-safety
+or UB bugs in that logic -- libriscv's own sandbox (gas metering,
+memory bounds) contains the *blast radius* of such a bug, but doesn't
+prevent the bug from existing or from being a real, exploitable
+divergence-inducing (or crashing) path in the first place. That's a
+materially different bar than "pick whatever's convenient":
+
+- **C/C++**: matches item 2 directly -- zero translation friction to
+  vendor and call its API surface as-is. Weakest safety guarantee
+  against exactly this threat model of the candidates: memory-safety
+  bugs (UB, uninitialized reads, overflow) are this language's most
+  common attacker-facing surface, and cross-platform floating-point
+  non-determinism (see above) is a second, independent hazard
+  (implicit promotions, easy-to-miss `-ffast-math`/FMA-contraction
+  compiler flags).
+- **Rust**: has a mature `riscv64gc-unknown-none-elf`/Linux target.
+  Its safe subset rules out the memory-safety half of the threat model
+  by construction (no UB from a crafted input triggering a bounds/
+  aliasing violation in safe code); `fp-contract` behavior is at least
+  explicit and auditable rather than implicit.
+- **Lean4**: matches this org's own existing verification-first
+  tooling directly -- `taskweft/godotweft`'s Lean `KnownMethods`
+  taxonomy, `fire/plausible-witness-dag` (below), and RFD 0026's own
+  precedent of Lean-verified reducers for loot/combat/progression, all
+  already exist. A formally verified guest program is the strongest
+  answer to "safe against active attack" available in principle (a
+  proven absence of a whole bug class beats "no one's found one yet"),
+  but whether Lean4's compiled output (it compiles to C, then native
+  code) can plausibly run as a *freestanding* libriscv guest at all --
+  no OS, no libc assumptions the runtime doesn't already make explicit
+  -- is a genuine, unverified technical question. It has never been
+  tried by any resource this RFD references.
+- **Formal methods more generally, on top of any of the above**: the
+  language choice and the verification-rigor choice are actually two
+  separate axes, not one -- a Lean4-*specified* determinism/safety
+  property could in principle be discharged against a C, Rust, *or*
+  Lean4 implementation (e.g. via a verified compiler pipeline, or a
+  reference-vs-implementation equivalence proof), not only by writing
+  the guest program in Lean4 itself. Which combination is worth the
+  effort is exactly the kind of question a follow-on RFD should answer
+  with a concrete threat model in hand, not this one.
+
+No candidate is picked here. This is recorded as its own open question,
+separate from the ABI/API-surface question above, with the threat model
+now stated explicitly (safety against a crafted-input active attacker,
+not just "safer by default") -- the follow-on RFD should make this
+choice against that stated bar rather than let a default win by
+omission.
+
+## Verification tooling: `fire/plausible-witness-dag`
+
+Directly relevant to the float-determinism question above, and worth
+recording now while it's fresh: this org already owns
+`fire/plausible-witness-dag`, a small Lean/Lake library (factored out of
+Flowref) for **plausible-driven iterative-deepening witness search** --
+domain code supplies a deterministic walk function and a candidate
+predicate over `Fin`-bounded random candidates (via
+`leanprover-community/plausible`, the Lean4 QuickCheck-style property
+tester -- the Lean-ecosystem sibling of Elixir's PropCheck/StreamData,
+matching this session's own already-stated PropCheck-over-StreamData
+preference), and `resolve` climbs a ladder of increasing search budgets
+("levels": `walkSteps`/`finBound`/`numInst`) until a witness is found or
+budgets are exhausted (confirmed by reading its actual
+`PlausibleWitnessDag/Examples.lean`, a 3-/5-gallon water-jug puzzle
+solved this way -- not assumed from the README alone).
+
+This is a plausible, concrete fit for certifying (not formally proving)
+that a specific godot-sandbox math primitive is deterministic: define
+the primitive's Lean4 model as the deterministic walk, a candidate
+predicate that flags any input where two independently-computed
+results diverge, and let `plausible-witness-dag` search increasingly
+large `Fin`-bounded input spaces for a counterexample. Finding none
+within a budget is evidence, not proof -- exactly the same honest
+caveat property-based testing always carries, and consistent with this
+tool's own name ("plausible," not "certain"). Whether this is the right
+level of rigor for lockstep-critical code (vs. an actual Lean4 proof of
+the determinism property) is itself part of the follow-on RFD's job,
+not decided here.
+
 ## Non-decision
 
 No implementation decision is made here -- Question 1 has a clear
@@ -155,10 +249,7 @@ answer now, but the "how" (GuestValue float support, the determinism
 contract across the host-call trampoline, which subset of the
 godot-sandbox API surface a lockstep guest program actually needs vs.
 the scene-tree-only calls like `Node`/`CanvasItem`/`Timer` that don't
-mean anything without a live tree) is real, non-trivial design work
-this RFD doesn't attempt to resolve inline. A follow-on RFD should cover
-the concrete design once scoped, most likely: extend GuestValue with a
-deterministic `Float64` variant, vendor
-`modules/sandbox/program/cpp/api` (or the subset a lockstep guest
-program actually calls), and define the determinism contract the
-host-math trampoline must uphold.
+mean anything without a live tree, which guest language to write it in,
+and whether/how `plausible-witness-dag`-style certification factors in)
+is real, non-trivial design work this RFD doesn't attempt to resolve
+inline. A follow-on RFD should cover the concrete design once scoped.
