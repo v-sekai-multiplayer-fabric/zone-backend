@@ -1,15 +1,15 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2026-present K. S. Ernest (iFire) Lee
 --
--- Root of `CassieGeogram` — no vendored C++ library, no @[extern]
--- symbols, but also no working pure-Lean constrained Delaunay: a
--- from-scratch attempt (ear clipping + Lawson edge flips) was dropped
--- for not matching geogram's real O(n log n) performance on this
--- pipeline's actual boundary sizes. `Delaunay.lean` now type-checks
--- but throws at call time — see its module doc.
+-- Root of `CassieGeogram` — Lean FFI bindings into the vendored
+-- (real) geogram library at c_src/thirdparty/geogram. Scope:
+--   - constrained Delaunay (BDEL) construction from a 2D boundary
+--   - refinement to a target edge length
+-- Matches the surface area `cassie_triangulator` already implements in
+-- C++; Lean side is a thin re-exposure for the cycle-detect pipeline
+-- (boundary loop → Delaunay → PMP smoothing).
 --
 -- Sibling to `CassieAvbd` (proofs + Slang) and `CassiePmp` (PMP
--- surface mesh remeshing/smoothing, which IS a working pure-Lean
--- reimplementation).
+-- surface mesh remeshing/smoothing — also real vendored C++ via FFI).
 
 import CassieGeogram.Delaunay

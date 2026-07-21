@@ -43,7 +43,7 @@ repos:
 
       - id: lean-build
         name: "lean: lake build"
-        entry: bash -c 'cd lean && lake build'
+        entry: bash -c 'bash c_src/thirdparty/build_cassie_native.sh && cd lean && lake build'
         language: system
         pass_filenames: false
         files: \.lean$

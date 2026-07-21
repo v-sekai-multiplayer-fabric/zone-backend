@@ -34,14 +34,20 @@ lean_exe check_no_fma where
 -- CASSIE (fabric-godot-core#feat/module-cassie) -- Lean formal specs +
 -- Slang shader codegen for the VR-sketching engine module, per RFD
 -- 0020's own sequencing ("Cassie... enters later as one more input
--- source to the same loop"). Vendored here as pure Lean: the original
--- geogram/PMP/eigen FFI bindings are reimplemented from scratch in
--- CassieGeogram/CassiePmp (see those files' module docs for the
--- documented algorithmic divergences from the real C++ libraries) so
--- this package has zero dependency on any vendored C++ geometry
--- library, matching this repo's existing "plain code over FFI when
--- the boundary isn't load-bearing" preference (RFD 0039).
+-- source to the same loop"). CassieGeogram/CassiePmp/CassieObj's
+-- native side (real geogram/PMP/Eigen, vendored at
+-- c_src/thirdparty/{geogram,pmp,eigen}, plus the Lean FFI wrapper TUs
+-- at c_src/thirdparty/ffi/) is built by
+-- c_src/thirdparty/build_cassie_native.sh into
+-- c_src/thirdparty/build/libcassie_native.a -- run that script before
+-- `lake build` on a fresh checkout. A pure-Lean reimplementation of
+-- the Delaunay/remeshing algorithms was tried first and dropped: it
+-- couldn't match the real libraries' performance on this pipeline's
+-- actual boundary sizes.
 -- ════════════════════════════════════════════════════════════════════
+def cassieNativeLib : String := "../c_src/thirdparty/build/libcassie_native.a"
+def cassieNativeLinkArgs : Array String :=
+  #["-Wl,--start-group", cassieNativeLib, "-Wl,--end-group", "-lstdc++"]
 
 -- DiffCloth's proved AVBD kernel library + host-side AVBD data
 -- (Cloth.Avbd.{AdjacencySpring, AdjacencyKwise, Coloring}).
@@ -53,16 +59,17 @@ lean_lib «Cloth» where
 lean_lib «CassieAvbd» where
   roots := #[`CassieAvbd]
 
--- Surface mesh remeshing/smoothing (pure Lean -- see CassiePmp/Mesh.lean).
+-- Surface mesh remeshing/smoothing -- FFI into real PMP, see
+-- CassiePmp/Mesh.lean.
 lean_lib «CassiePmp» where
   roots := #[`CassiePmp]
 
--- Constrained Delaunay triangulation (pure Lean -- see
--- CassieGeogram/Delaunay.lean).
+-- Constrained Delaunay triangulation -- FFI into real geogram, see
+-- CassieGeogram/Delaunay.lean.
 lean_lib «CassieGeogram» where
   roots := #[`CassieGeogram]
 
--- Wavefront OBJ loader (pure Lean -- see CassieObj.lean).
+-- Wavefront OBJ loader -- FFI, see CassieObj.lean.
 lean_lib «CassieObj» where
   roots := #[`CassieObj]
 
@@ -133,23 +140,25 @@ lean_exe «arrangement_probe» where
   root := `ArrangementProbe
   supportInterpreter := true
 
--- Smoke test for the (now pure-Lean) CassieObj loader on any OBJ file.
+-- Smoke test for the CassieObj FFI loader on any OBJ file.
 lean_exe «obj_probe» where
   root := `ObjProbe
   supportInterpreter := true
+  moreLinkArgs := cassieNativeLinkArgs
 
 -- Cycle -> patch end-to-end. `lake exe cycle_patch` builds the hat
 -- arrangement, picks the longest cycle, walks its boundary as a flat
--- polyline, runs the pure-Lean Delaunay triangulator, then pure-Lean
--- PMP-style implicit smoothing. Closes the detect -> triangulate ->
--- fair loop with real input data.
+-- polyline, runs geogram CDT2d, then PMP implicit smoothing. Closes
+-- the detect -> triangulate -> fair loop with real input data.
 lean_exe «cycle_patch» where
   root := `CyclePatch
   supportInterpreter := true
+  moreLinkArgs := cassieNativeLinkArgs
 
 -- Surface-fairing smoke test -- `lake exe surface_fair` builds a small
--- mesh in Lean, hands it to the pure-Lean CassiePmp remesher/smoother,
--- prints counts.
+-- mesh in Lean, hands it to PMP via the CassiePmp FFI, runs implicit
+-- smoothing, prints counts.
 lean_exe «surface_fair» where
   root := `SurfaceFair
   supportInterpreter := true
+  moreLinkArgs := cassieNativeLinkArgs

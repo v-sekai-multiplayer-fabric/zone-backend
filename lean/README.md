@@ -52,3 +52,23 @@ No `sorry`. No `: True := by trivial` wrapper "theorems". The vendored Cloth tre
 - The kernel-name list has exactly the expected length.
 
 `lake build` exit code 0 ⇒ every `native_decide` succeeded.
+
+## CassieGeogram / CassiePmp / CassieObj (triangulation/remeshing FFI)
+
+These bind real geogram (BSD-3) + PMP (MIT) + Eigen (MPL2), vendored at
+`../c_src/thirdparty/{geogram,pmp,eigen}` (the same source subset
+`fabric-godot-core`'s `modules/cassie/SCsub` compiles, minus the
+AGPL/non-commercial-licensed TetGen/Triangle backends and unused
+Voronoi/CSG/IO code). A from-scratch pure-Lean reimplementation was
+tried first and dropped — it couldn't match the real libraries'
+performance on this pipeline's actual boundary sizes.
+
+Build the native archive before `lake build` on a fresh checkout:
+
+```
+bash ../c_src/thirdparty/build_cassie_native.sh   # -> ../c_src/thirdparty/build/libcassie_native.a
+lake build cycle_patch surface_fair obj_probe
+```
+
+`obj_probe`/`cycle_patch`/`surface_fair` link this archive via
+`moreLinkArgs`; the other `lean_exe`s in this package don't need it.
