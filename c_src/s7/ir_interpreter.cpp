@@ -5,13 +5,23 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "value.h"
+
 namespace s7 {
 
 namespace {
 
+// Sentinel "code addresses" for LOAD_FUNC_ADDR in the oracle: any value
+// far outside the simulated heap range, decodable back to a function
+// index by CALL_INDIRECT. The riscv backend uses real addresses; the IR
+// treats them as opaque words either way, so the two stay equivalent.
+constexpr int64_t kOracleFuncBase = 1ll << 40;
+
 struct Interp {
   const IRProgram& program;
   uint64_t steps_left;
+  std::unordered_map<int64_t, int64_t> mem;
+  int64_t heap_next = static_cast<int64_t>(kHeapBase) + 8;
 
   int64_t run(int func_index, const std::vector<int64_t>& args) {
     if (func_index < 0 || func_index >= static_cast<int>(program.functions.size())) {
@@ -84,6 +94,35 @@ struct Interp {
           break;
         }
         case Op::RETURN: return vregs[in.a];
+        case Op::ALLOC: {
+          int64_t addr = heap_next;
+          heap_next += (in.imm + 7) & ~int64_t{7};
+          if (heap_next > static_cast<int64_t>(kHeapBase + kHeapArena)) {
+            throw std::runtime_error("ir_interpreter: heap arena exhausted");
+          }
+          vregs[in.dst] = addr;
+          break;
+        }
+        case Op::LOAD_MEM: {
+          auto it = mem.find(vregs[in.a] + in.imm);
+          vregs[in.dst] = (it == mem.end()) ? 0 : it->second;
+          break;
+        }
+        case Op::STORE_MEM: mem[vregs[in.a] + in.imm] = vregs[in.b]; break;
+        case Op::LOAD_FUNC_ADDR: vregs[in.dst] = kOracleFuncBase + in.callee * 8; break;
+        case Op::CALL_INDIRECT: {
+          int64_t target = vregs[in.a];
+          int64_t idx = (target - kOracleFuncBase) / 8;
+          if (target < kOracleFuncBase || (target - kOracleFuncBase) % 8 != 0 || idx < 0 ||
+              idx >= static_cast<int64_t>(program.functions.size())) {
+            throw std::runtime_error("ir_interpreter: indirect call to a non-function value");
+          }
+          std::vector<int64_t> call_args;
+          call_args.reserve(in.args.size());
+          for (int vreg : in.args) call_args.push_back(vregs[vreg]);
+          vregs[in.dst] = run(static_cast<int>(idx), call_args);
+          break;
+        }
       }
       pc++;
     }

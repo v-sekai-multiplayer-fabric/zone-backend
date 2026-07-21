@@ -14,6 +14,10 @@
 //                     table (Atom/Binary/List/Tuple/Map -- host-owned,
 //                     godot-sandbox-style; wired up in a later Stage 1
 //                     increment, reserved now so the tag space is fixed)
+//   low 3 bits 100 -> closure: 8-aligned guest-heap pointer to
+//                     [code_addr, captured values...], created by lambda
+//                     (captures are by value; set! on a captured variable
+//                     is a compile error in this subset)
 //
 // Scheme truthiness: everything except #f is true.
 #pragma once
@@ -25,9 +29,18 @@ constexpr int64_t kFalse = 0x06;
 constexpr int64_t kTrue = 0x0E;
 constexpr int64_t kNil = 0x16;
 
+constexpr int64_t kClosureTag = 0x4;
+
 constexpr int64_t tag_fixnum(int64_t v) { return v << 3; }
 constexpr int64_t untag_fixnum(int64_t v) { return v >> 3; }
 constexpr bool is_fixnum(int64_t v) { return (v & 7) == 0; }
 constexpr int64_t tag_bool(bool b) { return b ? kTrue : kFalse; }
+
+// Guest heap ABI (shared by riscv_codegen, elf_builder, and the IR
+// interpreter oracle): a zero-initialized RW segment. The first word is
+// the bump-allocation offset (zero at load = empty heap); allocations
+// start right after it. No GC, no overflow check yet -- 4MB arena.
+constexpr uint64_t kHeapBase = 0x400000;
+constexpr uint64_t kHeapArena = 4ull * 1024 * 1024;
 
 }  // namespace s7
