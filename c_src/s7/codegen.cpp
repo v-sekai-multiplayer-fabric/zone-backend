@@ -237,16 +237,17 @@ struct FnCodegen {
     if (op == "and") return gen_and_or(e, /*is_and=*/true);
     if (op == "or") return gen_and_or(e, /*is_and=*/false);
 
-    if (op == "+") return gen_fold(e, Op::ADD, tag_fixnum(0));
+    if (op == "+") return gen_fold(e, Op::CHECKED_ADD, tag_fixnum(0));
     if (op == "-") return gen_sub(e);
-    if (op == "*") return gen_mul(e);
-    if (op == "quotient") return gen_quotient(e);
-    if (op == "remainder") return gen_binary_prim(e, Op::REM);
+    if (op == "*") return gen_fold(e, Op::CHECKED_MUL, tag_fixnum(1));
+    if (op == "quotient") return gen_binary_prim(e, Op::CHECKED_QUOT);
+    if (op == "remainder") return gen_binary_prim(e, Op::CHECKED_REM);
     if (op == "<") return gen_compare(e, /*swap=*/false, /*negate=*/false);
     if (op == ">") return gen_compare(e, /*swap=*/true, /*negate=*/false);
     if (op == ">=") return gen_compare(e, /*swap=*/false, /*negate=*/true);
     if (op == "<=") return gen_compare(e, /*swap=*/true, /*negate=*/true);
-    if (op == "=" || op == "eq?") return gen_eq(e);
+    if (op == "=") return gen_numeric_eq(e);
+    if (op == "eq?") return gen_identity_eq(e);
     if (op == "not") return gen_not(e);
 
     return gen_call(e);
@@ -476,31 +477,13 @@ struct FnCodegen {
     if (e.list.size() < 2) fail("- wants at least 1 argument");
     if (e.list.size() == 2) {
       int zero = emit_imm(tag_fixnum(0));
-      return emit_binop(Op::SUB, zero, gen_expr(e.list[1]));
+      return emit_binop(Op::CHECKED_SUB, zero, gen_expr(e.list[1]));
     }
-    int acc = gen_expr(e.list[1]);
-    for (size_t i = 2; i < e.list.size(); ++i) acc = emit_binop(Op::SUB, acc, gen_expr(e.list[i]));
-    return acc;
-  }
-
-  // Tagged multiply: (8x)*(8y)/8 = 8xy, done as (a >> 3) * b.
-  int gen_mul(const SExpr& e) {
-    if (e.list.size() == 1) return emit_imm(tag_fixnum(1));
     int acc = gen_expr(e.list[1]);
     for (size_t i = 2; i < e.list.size(); ++i) {
-      int three = emit_imm(3);
-      int untagged = emit_binop(Op::SRA, acc, three);
-      acc = emit_binop(Op::MUL, untagged, gen_expr(e.list[i]));
+      acc = emit_binop(Op::CHECKED_SUB, acc, gen_expr(e.list[i]));
     }
     return acc;
-  }
-
-  // Tagged quotient: (8x)/(8y) = x/y raw, then retag with << 3.
-  int gen_quotient(const SExpr& e) {
-    if (e.list.size() != 3) fail("quotient wants 2 arguments");
-    int raw = emit_binop(Op::DIV, gen_expr(e.list[1]), gen_expr(e.list[2]));
-    int three = emit_imm(3);
-    return emit_binop(Op::SLL, raw, three);
   }
 
   int gen_binary_prim(const SExpr& e, Op op) {
@@ -508,17 +491,27 @@ struct FnCodegen {
     return emit_binop(op, gen_expr(e.list[1]), gen_expr(e.list[2]));
   }
 
+  // Bignum-correct ordering via CHECKED_LT (raw 0/1), then bool-tag.
   int gen_compare(const SExpr& e, bool swap, bool negate) {
     if (e.list.size() != 3) fail("comparison wants 2 arguments");
     int a = gen_expr(e.list[1]);
     int b = gen_expr(e.list[2]);
-    int raw = swap ? emit_binop(Op::SLT, b, a) : emit_binop(Op::SLT, a, b);
+    int raw = swap ? emit_binop(Op::CHECKED_LT, b, a) : emit_binop(Op::CHECKED_LT, a, b);
     if (negate) raw = emit_eqz(raw);
     return tag_raw_bool(raw);
   }
 
-  int gen_eq(const SExpr& e) {
-    if (e.list.size() != 3) fail("= / eq? wants 2 arguments");
+  // Numeric equality (=): bignum-correct, via the host on slow paths.
+  int gen_numeric_eq(const SExpr& e) {
+    if (e.list.size() != 3) fail("= wants 2 arguments");
+    int raw = emit_binop(Op::CHECKED_EQ, gen_expr(e.list[1]), gen_expr(e.list[2]));
+    return tag_raw_bool(raw);
+  }
+
+  // Identity equality (eq?): raw word comparison -- correct for fixnums,
+  // booleans, and nil; unspecified for bignum handles (as in s7).
+  int gen_identity_eq(const SExpr& e) {
+    if (e.list.size() != 3) fail("eq? wants 2 arguments");
     int diff = emit_binop(Op::XOR, gen_expr(e.list[1]), gen_expr(e.list[2]));
     return tag_raw_bool(emit_eqz(diff));
   }

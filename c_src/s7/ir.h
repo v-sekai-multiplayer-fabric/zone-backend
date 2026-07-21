@@ -41,6 +41,18 @@ enum class Op {
   STORE_MEM,       // mem[a + imm] <- b
   LOAD_FUNC_ADDR,  // dst <- absolute code address of function `callee`
   CALL_INDIRECT,   // dst <- (*a)(args...)   a holds a code address
+
+  // Checked tagged arithmetic (RFD 0018): operands and results are
+  // tagged GuestValues. Fast path is inline fixnum machine arithmetic;
+  // a non-fixnum operand or a fixnum overflow traps to the host-math
+  // ecall (kSyscallHostMath), which may return a bignum handle.
+  CHECKED_ADD,   // dst <- a + b            (tagged in, tagged out)
+  CHECKED_SUB,   // dst <- a - b            (tagged in, tagged out)
+  CHECKED_MUL,   // dst <- a * b            (tagged in, tagged out)
+  CHECKED_QUOT,  // dst <- quotient(a, b)   (tagged in, tagged out)
+  CHECKED_REM,   // dst <- remainder(a, b)  (tagged in, tagged out)
+  CHECKED_LT,    // dst <- a < b            (tagged in, RAW 0/1 out)
+  CHECKED_EQ,    // dst <- a == b (numeric) (tagged in, RAW 0/1 out)
 };
 
 struct Instr {

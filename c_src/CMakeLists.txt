@@ -27,6 +27,11 @@ add_subdirectory(thirdparty/libriscv/lib)
 # weft-warp-loop/flow-toolchain/CMakeLists.txt's own identical comment
 # for the malloc-returns-NULL protection-fault history this fixes.
 target_compile_definitions(riscv PUBLIC RISCV_BRK_MEMORY_SIZE=134217728ull)
+# The host-math ecall (RFD 0018) lives at 600, past godot-sandbox's
+# 500-549 block; libriscv's default syscall table caps at 512. PUBLIC:
+# the table size is baked into Machine's layout, so every consumer must
+# agree.
+target_compile_definitions(riscv PUBLIC RISCV_SYSCALLS_MAX=1024)
 if(WIN32)
   target_compile_definitions(riscv PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
@@ -40,8 +45,7 @@ target_link_libraries(verify_guest PRIVATE riscv)
 # involved. c_src/s7/ is our ahead-of-time compiler for the s7 Scheme
 # dialect; c_src/thirdparty/s7/ is the upstream s7 interpreter the guest
 # currently embeds -- same language, two execution strategies.
-add_executable(verify_s7
-  host_test/verify_s7.cpp
+set(S7_COMPILER_SOURCES
   s7/reader.cpp
   s7/codegen.cpp
   s7/ir_interpreter.cpp
@@ -49,7 +53,14 @@ add_executable(verify_s7
   s7/elf_builder.cpp
   s7/compiler.cpp
 )
+
+add_executable(verify_s7 host_test/verify_s7.cpp ${S7_COMPILER_SOURCES})
 target_link_libraries(verify_s7 PRIVATE riscv)
+
+# Standalone CLI: compile .scm to a RISC-V ELF (and optionally execute
+# it in libriscv) outside the test harness or any BEAM involvement.
+add_executable(s7c s7/s7c.cpp ${S7_COMPILER_SOURCES})
+target_link_libraries(s7c PRIVATE riscv)
 
 # The actual NIF the Elixir GenServer loads. ERTS_INCLUDE_DIR is passed
 # in by c_src/Makefile (elixir_make's entry point) - not hardcoded,
