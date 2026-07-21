@@ -49,14 +49,6 @@ jobs:
       - name: Create test database
         run: docker exec crdb cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS vsekai_test;"
 
-      - name: Install RISC-V toolchain (xpack riscv-none-elf-gcc)
-        run: |
-          curl -fsSL -o /tmp/riscv-gcc.tar.gz \
-            https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v15.2.0-1/xpack-riscv-none-elf-gcc-15.2.0-1-linux-x64.tar.gz
-          mkdir -p /opt/riscv-none-elf-gcc
-          tar -xzf /tmp/riscv-gcc.tar.gz -C /opt/riscv-none-elf-gcc --strip-components=1
-          echo "/opt/riscv-none-elf-gcc/bin" >> $GITHUB_PATH
-
       - name: Install dependencies
         run: mix deps.get
 
@@ -71,3 +63,13 @@ jobs:
           mix ecto.migrate
           mix run priv/repo/test_seeds.exs
           mix test --trace
+
+      - name: Cache Dialyzer PLTs
+        uses: actions/cache@v4
+        with:
+          path: priv/plts
+          key: ${{ runner.os }}-zone-backend-dialyzer-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-zone-backend-dialyzer-
+
+      - name: Dialyzer
+        run: mix dialyzer
