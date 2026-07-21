@@ -43,7 +43,20 @@ defmodule Uro.MixProject do
   #
   # Type `mix help deps` for examples and options.
   defp deps do
-    common_deps()
+    common_deps() ++ dev_evaluation_deps()
+  end
+
+  # weft_warp_burrito hardcodes mingw32-make and requires Elixir ~> 1.20 in its
+  # own mix.exs, so it cannot compile on this org's Linux CI runners regardless
+  # of MIX_ENV -- Mix compiles every declared dependency unconditionally. Kept
+  # out of CI entirely (GitHub Actions always sets CI=true) while still being
+  # fetchable for local :dev evaluation, per docs/decisions/0013.
+  defp dev_evaluation_deps do
+    if System.get_env("CI") do
+      []
+    else
+      [{:weft_warp_burrito, path: "weft_warp_burrito", only: :dev, runtime: false}]
+    end
   end
 
   defp common_deps do
@@ -81,8 +94,7 @@ defmodule Uro.MixProject do
       {:hammer, "~> 6.0"},
       {:scrivener_ecto, "~> 3.1"},
       {:ex_marcel, "~> 0.1.0"},
-      {:taskweft, github: "V-Sekai-fire/multiplayer-fabric-taskweft"},
-      {:weft_warp_burrito, github: "weftspun/weft-warp-burrito"},
+      {:taskweft, path: "taskweft"},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
       {:mox, "~> 1.1", only: :test},
