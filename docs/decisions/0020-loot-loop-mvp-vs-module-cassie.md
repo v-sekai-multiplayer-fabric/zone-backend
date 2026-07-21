@@ -64,7 +64,15 @@ bit-identical re-simulation) continue to coexist unreconciled.
 
 ## Confirmation
 
-Accepted when: the loop slice's `smoke.sh` still passes; at least one
-slice behavior (loot table or combo rule) executes from an
-s7-compiled/sandboxed script through zone-backend's trampoline; and no
-MVP build depends on `feat/module-cassie` merging.
+**Superseded**: [[0026-loop-core-aot-port]] and [[0027-loop-core-actor]]
+(both `state: published`) revised the delivery path from
+sandboxed/s7-compiled scripts to plain Elixir — `loot`/`combat`/
+`progression` are fully-trusted, Lean-verified content, not untrusted
+guest scripts, so the libriscv sandbox's pause/resume/gas/isolation
+model doesn't apply (the same reasoning [[0039-retire-s7-sandbox-plain-elixir-ports]]
+later applied org-wide to ReBAC/Planner). Accepted as: `lib/uro/loop_core/
+{combat_core,loot_core,progression_core}.ex` (the three reducers) plus
+`lib/uro/loop_core/instance.ex` (one GenServer per Field instance,
+real parameterized `combat_step/2`/`loot_roll/3`/`progression_step/2`),
+confirmed by `test/uro/loop_core_test.exs` (7 tests, passing). No MVP
+build depends on `feat/module-cassie` merging.
