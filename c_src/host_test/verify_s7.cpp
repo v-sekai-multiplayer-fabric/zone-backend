@@ -250,6 +250,20 @@ int main() {
        "main",
        [](s7::HostBignumTable& t) { return std::vector<int64_t>{t.make_binary("hello")}; },
        "5"},
+      {"string-eq-content",
+       "(define (main a b) (string=? a b))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{t.make_binary("alice"), t.make_binary("alice")};
+       },
+       "#t"},
+      {"string-eq-mismatch",
+       "(define (main a b) (string=? a b))",
+       "main",
+       [](s7::HostBignumTable& t) {
+         return std::vector<int64_t>{t.make_binary("alice"), t.make_binary("bob")};
+       },
+       "#f"},
       {"atom-eq-interned",
        "(define (main a b c) (and (eq? a b) (not (eq? a c))))",
        "main",

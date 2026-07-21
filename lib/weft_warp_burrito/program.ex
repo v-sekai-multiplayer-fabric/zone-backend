@@ -65,6 +65,7 @@ defmodule WeftWarpBurrito.Program do
   @op_map_ref 24
   @op_map_size 25
   @op_bin_size 26
+  @op_str_eq 27
 
   ## Public API
 
@@ -177,7 +178,8 @@ defmodule WeftWarpBurrito.Program do
         {@op_bin_size, bin} when is_binary(bin) ->
           box(byte_size(bin), handles)
 
-        {binop, _} when binop in [@op_cons, @op_list_ref, @op_tuple_ref, @op_map_ref] ->
+        {binop, _}
+        when binop in [@op_cons, @op_list_ref, @op_tuple_ref, @op_map_ref, @op_str_eq] ->
           with {:ok, y} <- unbox_term(b, handles) do
             host_binop(binop, x, y, handles)
           end
@@ -208,6 +210,9 @@ defmodule WeftWarpBurrito.Program do
       :error -> {:ok, @false_v, handles}
     end
   end
+
+  defp host_binop(@op_str_eq, x, y, handles) when is_binary(x) and is_binary(y),
+    do: {:ok, if(x == y, do: 1, else: 0), handles}
 
   defp host_binop(_, _, _, _), do: {:error, :host_op_type_error}
 

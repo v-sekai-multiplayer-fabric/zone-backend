@@ -74,6 +74,11 @@ target_compile_definitions(s7_host PRIVATE WITH_C_LOADER=0 WITH_SYSTEM_EXTRAS=0)
 add_executable(verify_s7_fidelity host_test/verify_s7_fidelity.cpp ${S7_COMPILER_SOURCES})
 target_link_libraries(verify_s7_fidelity PRIVATE riscv s7_host)
 
+# Stage 4: ReBAC ported to compiled Scheme (RFD 0022) against a
+# hand-written reference oracle mirroring standalone/tw_rebac.hpp.
+add_executable(verify_rebac host_test/verify_rebac.cpp ${S7_COMPILER_SOURCES})
+target_link_libraries(verify_rebac PRIVATE riscv)
+
 # The actual NIF the Elixir GenServer loads. ERTS_INCLUDE_DIR is passed
 # in by c_src/Makefile (elixir_make's entry point) - not hardcoded,
 # since it depends on the Erlang install on whatever machine builds

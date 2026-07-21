@@ -63,5 +63,7 @@ priv/libtaskweft_nif.so
 priv/weft_sandbox_nif.dll
 priv/weft_sandbox_nif.so
 priv/weft_guest.elf
+priv/s7_basic.elf
+priv/rebac.elf
 c_src/guest/*.o
 /build/

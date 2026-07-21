@@ -64,8 +64,9 @@ s7fixtures: | $(PRIV_DIR)
 	cmake -S c_src -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DERTS_INCLUDE_DIR="$(ERTS_INCLUDE_DIR)" -DFINE_INCLUDE_DIR="$(FINE_INCLUDE_DIR)"
 	cmake --build build --target s7c
 	build/s7c$(EXE) c_src/s7/fixtures/basic.scm -o $(PRIV_DIR)/s7_basic.elf
+	build/s7c$(EXE) c_src/s7/fixtures/rebac.scm -o $(PRIV_DIR)/rebac.elf
 
 clean:
-	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf
+	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf $(PRIV_DIR)/rebac.elf
 	rm -f c_src/guest/*.o
 	rm -rf build

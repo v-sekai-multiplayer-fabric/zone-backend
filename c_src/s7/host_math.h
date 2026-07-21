@@ -269,6 +269,11 @@ struct HostBignumTable {
         const HostValue& v = deref_kind(a_tagged, HostValue::Kind::Binary, "string-length");
         return tag_fixnum(static_cast<int64_t>(v.bytes.size()));
       }
+      case kHostStrEq: {
+        const HostValue& va = deref_kind(a_tagged, HostValue::Kind::Binary, "string=?");
+        const HostValue& vb = deref_kind(b_tagged, HostValue::Kind::Binary, "string=?");
+        return (va.bytes == vb.bytes) ? 1 : 0;
+      }
       default: throw std::runtime_error("host_math: unknown op");
     }
   }
