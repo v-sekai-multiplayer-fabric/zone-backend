@@ -66,6 +66,7 @@ defmodule WeftWarpBurrito.Program do
   @op_map_size 25
   @op_bin_size 26
   @op_str_eq 27
+  @op_map_set 28
 
   ## Public API
 
@@ -157,6 +158,17 @@ defmodule WeftWarpBurrito.Program do
     end
   end
 
+  # Functional map insert: `a` may be #f (start from an empty map), since
+  # a two-level nested-ref/nested-set chain never needs a separate
+  # "create empty map" primitive (mirrors hash-table-ref's own
+  # "missing key -> #f").
+  defp host_math(@op_map_set, a, b, handles) do
+    with {:ok, [key, value]} <- unbox_term(b, handles),
+         {:ok, base} <- unbox_map_or_false(a, handles) do
+      box(Map.put(base, key, value), handles)
+    end
+  end
+
   defp host_math(op, a, b, handles) do
     with {:ok, x} <- unbox_term(a, handles) do
       case {op, x} do
@@ -243,6 +255,15 @@ defmodule WeftWarpBurrito.Program do
       tagged == @nil_v -> {:ok, []}
       (tagged &&& 7) == @handle_tag -> fetch_handle(handles, tagged >>> 3)
       true -> {:error, :host_op_type_error}
+    end
+  end
+
+  defp unbox_map_or_false(tagged, handles) do
+    case unbox_term(tagged, handles) do
+      {:ok, m} when is_map(m) -> {:ok, m}
+      {:ok, false} -> {:ok, %{}}
+      {:ok, _} -> {:error, :host_op_type_error}
+      error -> error
     end
   end
 

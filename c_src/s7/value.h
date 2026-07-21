@@ -75,6 +75,15 @@ enum HostMathOp : int64_t {
   kHostMapSize = 25,
   kHostBinSize = 26,   // (string-length b), in bytes
   kHostStrEq = 27,     // (string=? a b), byte-content compare; raw 0/1
+
+  // (hash-table-set m k v): functional map insert -- Elixir maps are
+  // immutable, so "setting" a key produces a NEW map handle rather than
+  // mutating in place. `m` may be #f, treated as an empty map (mirrors
+  // hash-table-ref's "missing key -> #f" so a two-level nested lookup/
+  // update chain never needs a separate "create empty map" primitive).
+  // Generic and reusable -- not planner-specific -- the counterpart to
+  // kHostMapRef the same way `cons` is to `car`/`cdr`.
+  kHostMapSet = 28,
 };
 
 // Guest heap ABI (shared by riscv_codegen, elf_builder, and the IR

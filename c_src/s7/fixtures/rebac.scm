@@ -30,41 +30,41 @@
 
 (define (find-direct edges subj rel obj)
   (if (null? edges)
-      #f
-      (if (and (string=? (edge-subj (car edges)) subj)
-               (string=? (edge-rel (car edges)) rel)
-               (string=? (edge-obj (car edges)) obj))
-          #t
-          (find-direct (cdr edges) subj rel obj))))
+    #f
+    (if (and (string=? (edge-subj (car edges)) subj)
+        (string=? (edge-rel (car edges)) rel)
+        (string=? (edge-obj (car edges)) obj))
+      #t
+      (find-direct (cdr edges) subj rel obj))))
 
 (define (find-member-transitive edges all-edges subj rel obj fuel rc)
   (if (null? edges)
-      #f
-      (if (and (string=? (edge-subj (car edges)) subj)
-               (string=? (edge-rel (car edges)) (rc-member rc)))
-          (if (check-base all-edges (edge-obj (car edges)) rel obj (- fuel 1) rc)
-              #t
-              (find-member-transitive (cdr edges) all-edges subj rel obj fuel rc))
-          (find-member-transitive (cdr edges) all-edges subj rel obj fuel rc))))
+    #f
+    (if (and (string=? (edge-subj (car edges)) subj)
+        (string=? (edge-rel (car edges)) (rc-member rc)))
+      (if (check-base all-edges (edge-obj (car edges)) rel obj (- fuel 1) rc)
+        #t
+        (find-member-transitive (cdr edges) all-edges subj rel obj fuel rc))
+      (find-member-transitive (cdr edges) all-edges subj rel obj fuel rc))))
 
 (define (find-controls-delegation edges subj obj rc)
   (if (null? edges)
-      #f
-      (if (and (string=? (edge-subj (car edges)) obj)
-               (string=? (edge-rel (car edges)) (rc-delegated rc))
-               (string=? (edge-obj (car edges)) subj))
-          #t
-          (find-controls-delegation (cdr edges) subj obj rc))))
+    #f
+    (if (and (string=? (edge-subj (car edges)) obj)
+        (string=? (edge-rel (car edges)) (rc-delegated rc))
+        (string=? (edge-obj (car edges)) subj))
+      #t
+      (find-controls-delegation (cdr edges) subj obj rc))))
 
 (define (check-base edges subj rel obj fuel rc)
   (if (< fuel 1)
-      #f
-      (if (find-direct edges subj rel obj)
-          #t
-          (if (find-member-transitive edges edges subj rel obj fuel rc)
-              #t
-              (if (string=? rel (rc-controls rc))
-                  (find-controls-delegation edges subj obj rc)
-                  #f)))))
+    #f
+    (if (find-direct edges subj rel obj)
+      #t
+      (if (find-member-transitive edges edges subj rel obj fuel rc)
+        #t
+        (if (string=? rel (rc-controls rc))
+          (find-controls-delegation edges subj obj rc)
+          #f)))))
 
 (define (check-rel graph subj rel obj rc) (check-base graph subj rel obj 8 rc))

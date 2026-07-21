@@ -29,7 +29,7 @@ defmodule Uro.Application do
 
             # ExMarcel
             {Task, fn -> Uro.Helpers.Validation.init_extra_extensions() end}
-          ] ++ rebac_sandbox_children()
+          ] ++ rebac_sandbox_children() ++ planner_sandbox_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -44,6 +44,18 @@ defmodule Uro.Application do
     if Application.get_env(:uro, :rebac_adapter) == Uro.ReBAC.SandboxAdapter do
       elf = File.read!(Path.join(:code.priv_dir(:uro), "rebac.elf"))
       [{WeftWarpBurrito.Program, elf: elf, name: Uro.ReBAC.SandboxAdapter.Program}]
+    else
+      []
+    end
+  end
+
+  # Config-flip (RFD 0023): only boot the compiled-Scheme planner program
+  # when it is actually selected, so environments that keep the default
+  # TaskweftAdapter never depend on priv/planner.elf existing.
+  defp planner_sandbox_children do
+    if Application.get_env(:uro, :planner_adapter) == Uro.Planner.SandboxAdapter do
+      elf = File.read!(Path.join(:code.priv_dir(:uro), "planner.elf"))
+      [{WeftWarpBurrito.Program, elf: elf, name: Uro.Planner.SandboxAdapter.Program}]
     else
       []
     end

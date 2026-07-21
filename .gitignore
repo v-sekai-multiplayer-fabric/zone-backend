@@ -1,3 +1,6 @@
+# Python bytecode cache (scripts/*.py pre-commit hooks)
+__pycache__/
+
 # The directory Mix will write compiled artifacts to.
 /_build/
 
@@ -40,6 +43,7 @@ npm-debug.log
 .*.swp
 
 cockroach-data
+/cockroach/
 postgres
 redis
 
@@ -65,5 +69,6 @@ priv/weft_sandbox_nif.so
 priv/weft_guest.elf
 priv/s7_basic.elf
 priv/rebac.elf
+priv/planner.elf
 c_src/guest/*.o
 /build/

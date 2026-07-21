@@ -265,6 +265,29 @@ struct HostBignumTable {
         const HostValue& v = deref_kind(a_tagged, HostValue::Kind::Map, "hash-table-size");
         return tag_fixnum(static_cast<int64_t>(v.entries.size()));
       }
+      case kHostMapSet: {
+        // a_tagged may be #f (start empty), so this can't use deref_kind.
+        std::vector<std::pair<int64_t, int64_t>> entries;
+        if (a_tagged != kFalse) {
+          entries = deref_kind(a_tagged, HostValue::Kind::Map, "hash-table-set").entries;
+        }
+        const HostValue& kv = deref_kind(b_tagged, HostValue::Kind::List, "hash-table-set");
+        if (kv.items.size() != 2) {
+          throw std::runtime_error("host_math: hash-table-set malformed key/value");
+        }
+        int64_t key = kv.items[0];
+        int64_t value = kv.items[1];
+        bool replaced = false;
+        for (auto& [k, v] : entries) {
+          if (value_equal(k, key)) {
+            v = value;
+            replaced = true;
+            break;
+          }
+        }
+        if (!replaced) entries.emplace_back(key, value);
+        return make_map(std::move(entries));
+      }
       case kHostBinSize: {
         const HostValue& v = deref_kind(a_tagged, HostValue::Kind::Binary, "string-length");
         return tag_fixnum(static_cast<int64_t>(v.bytes.size()));

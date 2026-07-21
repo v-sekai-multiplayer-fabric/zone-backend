@@ -25,5 +25,11 @@ repos:
         name: "license: SPDX headers"
         entry: python3 scripts/check_spdx.py
         language: system
-        files: \.(ex|exs)$
+        files: \.(ex|exs|scm)$
         exclude: ^(deps|_build)/
+
+      - id: format-lisp
+        name: "s7 scheme: reindent (c_src/s7/fixtures/*.scm)"
+        entry: python3 scripts/format_lisp.py --check
+        language: system
+        files: \.scm$

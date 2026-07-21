@@ -65,8 +65,9 @@ s7fixtures: | $(PRIV_DIR)
 	cmake --build build --target s7c
 	build/s7c$(EXE) c_src/s7/fixtures/basic.scm -o $(PRIV_DIR)/s7_basic.elf
 	build/s7c$(EXE) c_src/s7/fixtures/rebac.scm -o $(PRIV_DIR)/rebac.elf
+	build/s7c$(EXE) c_src/s7/fixtures/planner.scm -o $(PRIV_DIR)/planner.elf
 
 clean:
-	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf $(PRIV_DIR)/rebac.elf
+	rm -f $(NIF_SO) $(SANDBOX_NIF_SO) $(PRIV_DIR)/weft_guest.elf $(PRIV_DIR)/s7_basic.elf $(PRIV_DIR)/rebac.elf $(PRIV_DIR)/planner.elf
 	rm -f c_src/guest/*.o
 	rm -rf build

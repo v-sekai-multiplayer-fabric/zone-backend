@@ -10,7 +10,7 @@
 (define (bigfact-rem n m) (remainder (bigfact n) m))
 (define (compose-demo x)
   (let ((inc (lambda (v) (+ v 1)))
-        (dbl (lambda (v) (* v 2))))
+      (dbl (lambda (v) (* v 2))))
     (inc (dbl x))))
 ; Handle-value ops: lists/tuples/maps/binaries/atoms live host-side
 ; (real Elixir terms); every structural op below round-trips through
