@@ -2,8 +2,7 @@ defmodule Taskweft.NIF do
   @moduledoc """
   Raw NIF bindings for the Taskweft C++20 planner.
 
-  Prefer the higher-level modules (`Taskweft`, `Taskweft.ReBAC`,
-  `Taskweft.MCExecutor`) over calling these directly.
+  Prefer `Taskweft.ReBAC` over calling the `rebac_*` functions directly.
 
   ## HRR type boundary
 
