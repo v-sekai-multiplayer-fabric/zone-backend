@@ -1,0 +1,16 @@
+{"version": "1.2.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"url": "https://github.com/fire/lean-capstone",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "6e9da741596238384bc9b83224a2ee3f22cf8b6a",
+   "name": "«lean-capstone»",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "main",
+   "inherited": false,
+   "configFile": "lakefile.lean"}],
+ "name": "lockstep",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

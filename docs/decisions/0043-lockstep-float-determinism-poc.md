@@ -218,6 +218,48 @@ Findings 9 and 10 reinforce the same lesson as the register-index bug:
 being trusted, including the verification code itself, twice over in
 softfloat's case.**
 
+## Automating the "-ffp-contract discipline" check: `lean/CheckNoFma.lean`
+
+Finding 4's fix (`-ffp-contract=off`) is only as good as the guarantee
+that it's actually applied on every build, forever -- a one-time manual
+`objdump` check (as findings 4 and this RFD's earlier text described)
+doesn't scale, and source review can't catch it at all (nothing in the
+C source changes when the compiler decides to fuse). `lean/CheckNoFma.lean`
+makes this an automatable, repeatable check: disassemble the compiled
+guest ELF's `.text` section and fail if any RV64GC fused multiply-add
+opcode (`fmadd.d`/`fmsub.d`/`fnmadd.d`/`fnmsub.d` and the single-
+precision forms) is present.
+
+Built using this org's own `fire/lean-capstone` (a Lean4 Capstone
+binding) rather than shelling out to `riscv-none-elf-objdump` -- reuses
+an owned asset and stays in the same Lean4 tooling this whole pipeline
+already depends on. `lean/lakefile.lean` adds it as a `lean-capstone`
+dependency (vendoring Capstone from source via `cc`+`ar`, no `cmake`);
+`lean/CheckNoFma.lean` implements a minimal ELF64 reader (just enough
+to locate `.text` by section name) plus the FMA-mnemonic scan.
+
+**A second real bug found and fixed via this same "verify independently"
+discipline**: an initial version, using `Mode.riscv64` alone, decoded
+*zero* instructions from a valid, non-empty `.text` section -- not an
+error, `cs_disasm` (Capstone's C entry point) silently stops at the
+first instruction it cannot decode and returns whatever it managed
+before that point. ELF section parsing was confirmed correct first
+(cross-checked byte-for-byte against `objdump -h`'s reported offset/
+size/address), narrowing the bug to Capstone's mode configuration:
+`riscv-none-elf-gcc`'s `-march=rv64gc` output uses both the compressed
+("C" extension) and float/double ("F"/"D" extension) instruction
+extensions, each requiring its own `cs_mode` bit that `Mode.riscv64`
+alone doesn't set. Fixed by combining `Mode.riscv64 ||| Mode.raw (1<<<2)
+||| Mode.raw (1<<<3)` (compressed + float/double). **This gap in
+`lean-capstone` itself was reported upstream**: `fire/lean-capstone#2`
+adds named `Mode.riscvC`/`Mode.riscvFD` constants and a README section,
+so a future consumer doesn't have to rediscover this the same way.
+
+Confirmed working against both guest ELFs from finding 4: the default-
+flags build reports 6 `fmadd.d` instructions at their exact addresses;
+the `-ffp-contract=off` build reports 0 findings across 18 scanned
+instructions (not a vacuous empty scan).
+
 ## Confirmation
 
 `c_src/host_test/verify_float_determinism.cpp`, built via
@@ -239,3 +281,9 @@ libriscv unconditionally, with fixed-point additionally eliminating the
 softfloat implementation matches native hardware double arithmetic
 across a range of add/multiply/dot-product cases before being trusted
 for the cross-platform claim.
+
+`lake build check_no_fma` (in `lean/`) followed by running it against
+both guest ELFs from finding 4 confirms 6 FMA instructions detected
+(default flags) vs. 0 found across 18 scanned instructions
+(`-ffp-contract=off`) -- matching `objdump`'s manually-checked findings
+exactly, now automated and reusable.
