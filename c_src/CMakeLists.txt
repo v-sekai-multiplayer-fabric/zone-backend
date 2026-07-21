@@ -13,6 +13,12 @@ project(weft_warp_burrito_native CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# libriscv is linked into weft_sandbox_nif, a SHARED library - on ELF/Linux
+# (unlike the PE/Windows DLLs this build was originally proved on) every
+# object folded into a shared object must be position-independent, or the
+# final link fails with "can not be used when making a shared object".
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 set(RISCV_32I OFF CACHE BOOL "" FORCE)
 set(RISCV_64I ON CACHE BOOL "" FORCE)
 set(RISCV_BINARY_TRANSLATION OFF CACHE BOOL "" FORCE)
