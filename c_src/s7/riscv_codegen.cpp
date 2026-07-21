@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-namespace lisp1 {
+namespace s7 {
 
 namespace {
 void push_u32(std::vector<uint8_t>& code, uint32_t word) {
@@ -48,4 +48,4 @@ std::vector<uint8_t> generate_riscv(const IRFunction& func) {
   return code;
 }
 
-}  // namespace lisp1
+}  // namespace s7

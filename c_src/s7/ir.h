@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace lisp1 {
+namespace s7 {
 
 enum class Op {
   LOAD_IMM,  // vregs[dst] = imm
@@ -34,4 +34,4 @@ struct IRFunction {
   std::vector<Instr> instrs;
 };
 
-}  // namespace lisp1
+}  // namespace s7

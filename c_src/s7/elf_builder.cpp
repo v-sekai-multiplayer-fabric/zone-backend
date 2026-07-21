@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-namespace lisp1 {
+namespace s7 {
 
 namespace {
 
@@ -225,4 +225,4 @@ std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::stri
   return out;
 }
 
-}  // namespace lisp1
+}  // namespace s7

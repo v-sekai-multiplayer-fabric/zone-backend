@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace lisp1 {
+namespace s7 {
 
 constexpr uint64_t kBaseAddr = 0x10000;
 
@@ -19,4 +19,4 @@ constexpr uint64_t kBaseAddr = 0x10000;
 // .text section, exported as one global FUNC symbol named `func_name`.
 std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::string& func_name);
 
-}  // namespace lisp1
+}  // namespace s7

@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-namespace lisp1 {
+namespace s7 {
 
 // Compiles the fixed Stage-0 program `(+ 1 2)` to a RISC-V ELF exposing
 // one function, `func_name`, taking no arguments and returning 3 in a0.
 std::vector<uint8_t> compile_stage0(const std::string& func_name);
 
-}  // namespace lisp1
+}  // namespace s7

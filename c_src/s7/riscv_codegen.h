@@ -14,7 +14,7 @@
 
 #include "ir.h"
 
-namespace lisp1 {
+namespace s7 {
 
 // R-type: funct7[31:25] rs2[24:20] rs1[19:15] funct3[14:12] rd[11:7] opcode[6:0]
 inline uint32_t encode_r_type(uint32_t funct7, uint32_t rs2, uint32_t rs1, uint32_t funct3,
@@ -47,4 +47,4 @@ inline uint32_t vreg_to_phys(int vreg) { return 10 + static_cast<uint32_t>(vreg)
 // Compiles one IRFunction to raw RV64 machine code bytes.
 std::vector<uint8_t> generate_riscv(const IRFunction& func);
 
-}  // namespace lisp1
+}  // namespace s7

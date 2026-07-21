@@ -6,7 +6,7 @@
 #include "ir.h"
 #include "riscv_codegen.h"
 
-namespace lisp1 {
+namespace s7 {
 
 std::vector<uint8_t> compile_stage0(const std::string& func_name) {
   // (+ 1 2), hand-built IR -- Stage 1 replaces this with a real reader.
@@ -24,4 +24,4 @@ std::vector<uint8_t> compile_stage0(const std::string& func_name) {
   return build_elf(code, func_name);
 }
 
-}  // namespace lisp1
+}  // namespace s7
