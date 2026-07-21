@@ -34,6 +34,13 @@ enum class Op {
   BRANCH_ZERO,  // if a == 0 -> label
   CALL,         // dst <- callee(args...)   callee = IRProgram function index
   RETURN,       // return a
+
+  // Heap + closures (Stage 2):
+  ALLOC,           // dst <- bump-allocate imm bytes, returns raw 8-aligned addr
+  LOAD_MEM,        // dst <- mem[a + imm]
+  STORE_MEM,       // mem[a + imm] <- b
+  LOAD_FUNC_ADDR,  // dst <- absolute code address of function `callee`
+  CALL_INDIRECT,   // dst <- (*a)(args...)   a holds a code address
 };
 
 struct Instr {

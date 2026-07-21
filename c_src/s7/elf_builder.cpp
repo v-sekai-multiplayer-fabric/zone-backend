@@ -4,6 +4,8 @@
 
 #include <cstring>
 
+#include "value.h"
+
 namespace s7 {
 
 namespace {
@@ -17,6 +19,7 @@ constexpr uint64_t kShfAlloc = 0x2;
 constexpr uint64_t kShfExecinstr = 0x4;
 constexpr uint32_t kPtLoad = 1;
 constexpr uint32_t kPfExec = 1;
+constexpr uint32_t kPfWrite = 2;
 constexpr uint32_t kPfRead = 4;
 constexpr uint64_t kPageSize = 0x1000;
 
@@ -147,7 +150,7 @@ std::vector<uint8_t> build_elf(const CompiledProgram& program) {
   ehdr.e_shoff = shoff;
   ehdr.e_ehsize = sizeof(Elf64_Ehdr);
   ehdr.e_phentsize = sizeof(Elf64_Phdr);
-  ehdr.e_phnum = 1;
+  ehdr.e_phnum = 2;
   ehdr.e_shentsize = sizeof(Elf64_Shdr);
   ehdr.e_shnum = 5;  // null, .text, .symtab, .strtab, .shstrtab
   ehdr.e_shstrndx = 4;
@@ -162,8 +165,22 @@ std::vector<uint8_t> build_elf(const CompiledProgram& program) {
   phdr.p_memsz = code.size();
   phdr.p_align = kPageSize;
 
+  // Guest heap: a zero-initialized (filesz 0, BSS-style) RW segment for
+  // the bump allocator -- word 0 is the bump offset, so an untouched
+  // segment IS an empty heap (see value.h's heap ABI comment).
+  Elf64_Phdr heap{};
+  heap.p_type = kPtLoad;
+  heap.p_flags = kPfRead | kPfWrite;
+  heap.p_offset = text_file_offset;  // filesz 0: nothing read from file
+  heap.p_vaddr = kHeapBase;
+  heap.p_paddr = kHeapBase;
+  heap.p_filesz = 0;
+  heap.p_memsz = 8 + kHeapArena;
+  heap.p_align = kPageSize;
+
   append_bytes(out, &ehdr, sizeof(ehdr));
   append_bytes(out, &phdr, sizeof(phdr));
+  append_bytes(out, &heap, sizeof(heap));
   pad_to(out, text_file_offset);
   append_bytes(out, code.data(), code.size());
   append_bytes(out, symtab.data(), symtab.size() * sizeof(Elf64_Sym));

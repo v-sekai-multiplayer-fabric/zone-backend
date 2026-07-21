@@ -76,6 +76,34 @@ int main() {
       {"eq-bools", "(define (main) (eq? #t #t))", "main", {}, s7::kTrue},
       {"args-2", "(define (add2 a b) (+ a b))", "add2",
        {s7::tag_fixnum(20), s7::tag_fixnum(22)}, s7::tag_fixnum(42)},
+      // --- Stage 2: closures ---
+      {"lambda-immediate", "(define (main) ((lambda (x y) (* x y)) 6 7))", "main", {},
+       s7::tag_fixnum(42)},
+      {"make-adder",
+       "(define (make-adder n) (lambda (x) (+ x n)))\n"
+       "(define (main) (let ((add5 (make-adder 5))) (add5 37)))",
+       "main", {}, s7::tag_fixnum(42)},
+      {"compose",
+       "(define (compose f g) (lambda (x) (f (g x))))\n"
+       "(define (main)\n"
+       "  (let ((inc (lambda (x) (+ x 1)))\n"
+       "        (dbl (lambda (x) (* x 2))))\n"
+       "    ((compose inc dbl) 20)))",
+       "main", {}, s7::tag_fixnum(41)},
+      {"nested-capture",
+       "(define (main)\n"
+       "  (let ((a 10))\n"
+       "    (let ((f (lambda (b) (lambda (c) (+ a (+ b c))))))\n"
+       "      ((f 20) 12))))",
+       "main", {}, s7::tag_fixnum(42)},
+      {"closure-as-branch-value",
+       "(define (pick which) (if which (lambda (x) (+ x 1)) (lambda (x) (- x 1))))\n"
+       "(define (main) (+ ((pick #t) 10) ((pick #f) 10)))",
+       "main", {}, s7::tag_fixnum(20)},
+      {"two-closures-independent",
+       "(define (make-adder n) (lambda (x) (+ x n)))\n"
+       "(define (main) (+ ((make-adder 100) 1) ((make-adder 200) 2)))",
+       "main", {}, s7::tag_fixnum(303)},
   };
 
   int failures = 0;
@@ -106,7 +134,7 @@ int main() {
     fprintf(stderr, "FAIL: %d of %zu tests failed\n", failures, tests.size());
     return 1;
   }
-  printf("PASS: all %zu Stage 1 tests agree across IR oracle, libriscv execution, and expected values\n",
+  printf("PASS: all %zu s7-compiler tests agree across IR oracle, libriscv execution, and expected values\n",
          tests.size());
   return 0;
 }

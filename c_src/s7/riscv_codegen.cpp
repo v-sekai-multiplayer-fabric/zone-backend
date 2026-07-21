@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "value.h"
+
 namespace s7 {
 
 namespace {
@@ -69,6 +71,9 @@ uint32_t enc_sll(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0000000,
 uint32_t enc_sra(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0100000, b, a, 0b101, rd, 0b0110011); }
 uint32_t enc_slt(uint32_t rd, uint32_t a, uint32_t b) { return r_type(0b0000000, b, a, 0b010, rd, 0b0110011); }
 uint32_t enc_bne(uint32_t a, uint32_t b, int32_t off) { return b_type(off, b, a, 0b001); }
+uint32_t enc_auipc(uint32_t rd, int32_t imm20) {
+  return (static_cast<uint32_t>(imm20 & 0xFFFFF) << 12) | (rd << 7) | 0b0010111;
+}
 
 struct Emitter {
   std::vector<uint8_t>& code;
@@ -148,6 +153,10 @@ CompiledProgram generate_riscv(const IRProgram& program) {
 
   // (call-site offset, callee function index) for cross-function jal patching.
   std::vector<std::pair<size_t, int>> call_fixups;
+  // (auipc offset, callee function index) for LOAD_FUNC_ADDR patching --
+  // an auipc+addi pair whose PC-relative delta is known once every
+  // function's offset is fixed.
+  std::vector<std::pair<size_t, int>> func_addr_fixups;
 
   for (const IRFunction& func : program.functions) {
     if (func.num_params > 8) {
@@ -240,6 +249,54 @@ CompiledProgram generate_riscv(const IRProgram& program) {
           em.u32(enc_addi(kSp, kSp, fe.frame));
           em.u32(enc_jalr(kZero, kRa, 0));
           break;
+        case Op::ALLOC: {
+          if (in.imm < 0 || in.imm > 2040) {
+            throw std::runtime_error("riscv_codegen: ALLOC size out of range");
+          }
+          int64_t aligned = (in.imm + 7) & ~int64_t{7};
+          em.li(kT0, static_cast<int64_t>(kHeapBase));
+          em.u32(enc_ld(kT1, kT0, 0));  // bump offset (zero at load)
+          em.li(kT2, static_cast<int64_t>(kHeapBase) + 8);
+          em.u32(enc_add(kT2, kT2, kT1));  // result address
+          em.u32(enc_addi(kT1, kT1, static_cast<int32_t>(aligned)));
+          em.u32(enc_sd(kT1, kT0, 0));
+          fe.store(kT2, in.dst);
+          break;
+        }
+        case Op::LOAD_MEM:
+          if (in.imm < -2048 || in.imm > 2047) {
+            throw std::runtime_error("riscv_codegen: LOAD_MEM offset out of range");
+          }
+          fe.load(kT0, in.a);
+          em.u32(enc_ld(kT2, kT0, static_cast<int32_t>(in.imm)));
+          fe.store(kT2, in.dst);
+          break;
+        case Op::STORE_MEM:
+          if (in.imm < -2048 || in.imm > 2047) {
+            throw std::runtime_error("riscv_codegen: STORE_MEM offset out of range");
+          }
+          fe.load(kT0, in.a);
+          fe.load(kT1, in.b);
+          em.u32(enc_sd(kT1, kT0, static_cast<int32_t>(in.imm)));
+          break;
+        case Op::LOAD_FUNC_ADDR:
+          func_addr_fixups.emplace_back(em.offset(), in.callee);
+          em.u32(enc_auipc(kT2, 0));       // patched later
+          em.u32(enc_addi(kT2, kT2, 0));   // patched later
+          fe.store(kT2, in.dst);
+          break;
+        case Op::CALL_INDIRECT: {
+          if (in.args.size() > 8) {
+            throw std::runtime_error("riscv_codegen: more than 8 call arguments");
+          }
+          for (size_t i = 0; i < in.args.size(); ++i) {
+            fe.load(kA0 + static_cast<uint32_t>(i), in.args[i]);
+          }
+          fe.load(kT0, in.a);
+          em.u32(enc_jalr(kRa, kT0, 0));
+          fe.store(kA0, in.dst);
+          break;
+        }
       }
     }
 
@@ -268,6 +325,16 @@ CompiledProgram generate_riscv(const IRProgram& program) {
       throw std::runtime_error("riscv_codegen: call out of jal range");
     }
     em.patch_u32(at, j_type(static_cast<int32_t>(rel), kRa));
+  }
+
+  // Patch function-address materializations (auipc+addi pairs).
+  for (auto& [at, callee] : func_addr_fixups) {
+    int64_t delta = static_cast<int64_t>(out.functions[static_cast<size_t>(callee)].offset) -
+                    static_cast<int64_t>(at);
+    int64_t hi = (delta + 0x800) >> 12;
+    int64_t lo = delta - (hi << 12);
+    em.patch_u32(at, enc_auipc(kT2, static_cast<int32_t>(hi)));
+    em.patch_u32(at + 4, enc_addi(kT2, kT2, static_cast<int32_t>(lo)));
   }
 
   return out;
