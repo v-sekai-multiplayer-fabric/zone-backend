@@ -98,6 +98,14 @@ riscv-none-elf-gcc -march=rv64gc -mabi=lp64d -static -O2 -ffreestanding \
 
 cmake --build build --target verify_alt_strategies
 ./build/verify_alt_strategies guest_alt.elf
+
+# 7. Automate the "-ffp-contract=off is actually being honored" check
+#    from finding 4/step 3 above, using this org's own fire/lean-capstone
+#    (a Lean4 Capstone binding) instead of shelling out to
+#    riscv-none-elf-objdump -- see lean/CheckNoFma.lean.
+cd lean && lake build check_no_fma && cd ..
+./lean/.lake/build/bin/check_no_fma guest_default.elf   # expect: 6 FMA instructions found, exit 1
+./lean/.lake/build/bin/check_no_fma guest_strict.elf    # expect: OK, 18 instructions scanned, exit 0
 ```
 
 ## What this proved (see the RFD for the full narrative)
