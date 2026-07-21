@@ -24,8 +24,8 @@ bool is_primitive(const std::string& s) {
          s == ">" || s == ">=" || s == "<=" || s == "=" || s == "eq?" || s == "not" ||
          s == "car" || s == "cdr" || s == "cons" || s == "list" || s == "length" ||
          s == "list-ref" || s == "pair?" || s == "null?" || s == "vector-ref" ||
-         s == "vector-length" || s == "hash-table-ref" || s == "string-length" ||
-         s == "string=?";
+         s == "vector-length" || s == "hash-table-ref" || s == "hash-table-set" ||
+         s == "string-length" || s == "string=?";
 }
 
 // Lowering context: functions live in a deque so references stay stable
@@ -270,6 +270,7 @@ struct FnCodegen {
     if (op == "hash-table-ref") return gen_host_prim(e, kHostMapRef, 2, false);
     if (op == "string-length") return gen_host_prim(e, kHostBinSize, 1, false);
     if (op == "string=?") return gen_host_prim(e, kHostStrEq, 2, /*raw_bool=*/true);
+    if (op == "hash-table-set") return gen_hash_table_set(e);
 
     return gen_call(e);
   }
@@ -569,6 +570,23 @@ struct FnCodegen {
     int acc = emit_imm(kNil);
     for (size_t i = elems.size(); i-- > 0;) acc = emit_host_op(kHostCons, elems[i], acc);
     return acc;
+  }
+
+  // (hash-table-set m k v): functional insert, packed as (list k v) --
+  // NOT (cons k v): kHostCons requires its second operand to already be
+  // a list or nil, so a raw dotted pair of two arbitrary values isn't
+  // constructible that way. A proper 2-element list is (nesting ends in
+  // nil, satisfying kHostCons at every step), and the host destructures
+  // it as [k, v]. Keeps the existing 2-operand HOST_OP ABI unchanged.
+  int gen_hash_table_set(const SExpr& e) {
+    if (e.list.size() != 4) fail("hash-table-set wants 3 arguments");
+    int map = gen_expr(e.list[1]);
+    int key = gen_expr(e.list[2]);
+    int value = gen_expr(e.list[3]);
+    int nil = emit_imm(kNil);
+    int tail = emit_host_op(kHostCons, value, nil);
+    int packed = emit_host_op(kHostCons, key, tail);
+    return emit_host_op(kHostMapSet, map, packed);
   }
 
   // (null? x): nil is an immediate, so this never leaves the guest.
