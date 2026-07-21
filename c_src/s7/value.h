@@ -55,6 +55,25 @@ enum HostMathOp : int64_t {
   kHostRem = 4,
   kHostLt = 5,   // returns raw 0/1
   kHostEq = 6,   // returns raw 0/1
+
+  // Handle-value operations (same trampoline, ops 16+): List / Tuple /
+  // Map / Binary / Atom values are host-owned (godot-sandbox
+  // CurrentState style); the guest holds opaque handles and reaches
+  // back through the ecall for every structural operation. Scheme-side
+  // naming: vector-* maps to Elixir tuples, hash-table-ref to maps,
+  // string-length to binaries. Accessors return tagged GuestValues;
+  // predicates return raw 0/1.
+  kHostCar = 16,
+  kHostCdr = 17,       // cdr of a 1-element list is nil
+  kHostCons = 18,      // second operand must be a list or nil
+  kHostLength = 19,    // nil counts as the empty list
+  kHostListRef = 20,   // (list-ref l i), 0-based, bounds-checked
+  kHostIsPair = 21,    // raw 0/1; never throws on non-handles
+  kHostTupleRef = 22,  // (vector-ref t i)
+  kHostTupleSize = 23, // (vector-length t)
+  kHostMapRef = 24,    // (hash-table-ref m k); missing key -> #f, as in s7
+  kHostMapSize = 25,
+  kHostBinSize = 26,   // (string-length b), in bytes
 };
 
 // Guest heap ABI (shared by riscv_codegen, elf_builder, and the IR

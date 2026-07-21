@@ -416,6 +416,14 @@ CompiledProgram generate_riscv(const IRProgram& program) {
           fe.store(kT2, in.dst);                    // 14
           break;
         }
+        // Handle-value ops: no fast path exists (the value lives
+        // host-side), so this is just the shared slow path, always.
+        case Op::HOST_OP:
+          fe.load(kT0, in.a);
+          fe.load(kT1, in.b);
+          emit_host_math_slow(em, in.imm);
+          fe.store(kT2, in.dst);
+          break;
       }
     }
 

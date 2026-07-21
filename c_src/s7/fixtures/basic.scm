@@ -12,3 +12,14 @@
   (let ((inc (lambda (v) (+ v 1)))
         (dbl (lambda (v) (* v 2))))
     (inc (dbl x))))
+; Handle-value ops: lists/tuples/maps/binaries/atoms live host-side
+; (real Elixir terms); every structural op below round-trips through
+; the trampoline.
+(define (sum-list l) (if (null? l) 0 (+ (car l) (sum-list (cdr l)))))
+(define (second l) (list-ref l 1))
+(define (build-list a b) (cons a (list b 3)))
+(define (tuple-pick t) (vector-ref t 1))
+(define (tuple-size t) (vector-length t))
+(define (map-get m k) (hash-table-ref m k))
+(define (bin-size b) (string-length b))
+(define (same? a b) (eq? a b))

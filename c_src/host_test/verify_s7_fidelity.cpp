@@ -192,6 +192,20 @@ int main() {
        "(define (pick which) (if which (lambda (x) (+ x 1)) (lambda (x) (- x 1))))"
        "(define (main) (+ ((pick #t) 10) ((pick #f) 10)))",
        "main", {}},
+      // Handle-value ops (lists only here: real s7 shares list/car/cdr
+      // spelling with our subset; tuple/map/binary spellings diverge
+      // and are covered by verify_s7 + the Elixir tests instead).
+      {"list-sum",
+       "(define (sum l) (if (null? l) 0 (+ (car l) (sum (cdr l)))))"
+       "(define (main) (sum (list 1 2 3 4 5)))",
+       "main", {}},
+      {"list-length", "(define (main) (length (list 1 2 3)))", "main", {}},
+      {"list-length-empty", "(define (main) (length (list)))", "main", {}},
+      {"list-ref", "(define (main) (list-ref (list 10 20 30) 1))", "main", {}},
+      {"cons-car", "(define (main) (car (cons 99 (list 1))))", "main", {}},
+      {"pair-true", "(define (main) (pair? (list 1)))", "main", {}},
+      {"pair-false", "(define (main) (pair? 7))", "main", {}},
+      {"null-of-cdr", "(define (main) (null? (cdr (list 1))))", "main", {}},
   };
 
   int failures = 0;

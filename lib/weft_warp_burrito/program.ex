@@ -15,8 +15,17 @@ defmodule WeftWarpBurrito.Program do
 
   The per-call handle table lives here, in plain Elixir state, and is
   discarded when the call completes (godot-sandbox CurrentState
-  semantics). Arguments must be fixnum-range integers or booleans for
-  now; results may be arbitrarily large integers.
+  semantics). Arguments and results may be integers of any size,
+  booleans, nil, atoms, lists, tuples, maps, or binaries -- complex
+  terms stay host-side as handles, and the guest reaches back through
+  the same trampoline for every structural operation (car/cdr/cons,
+  vector-ref on tuples, hash-table-ref on maps, string-length on
+  binaries). Atoms are interned per call so guest `eq?` works on them.
+
+  One documented collapse: Scheme has a single `()` where Elixir has
+  both `nil` and `[]` -- both encode to the nil immediate, and it
+  always decodes back as `nil` (so a guest-built list's empty tail
+  never surfaces; only whole lists do, as real Elixir lists).
   """
   use GenServer
 
@@ -43,6 +52,19 @@ defmodule WeftWarpBurrito.Program do
   @op_rem 4
   @op_lt 5
   @op_eq 6
+
+  # Handle-value ops (same trampoline, ops 16+) -- must match value.h.
+  @op_car 16
+  @op_cdr 17
+  @op_cons 18
+  @op_length 19
+  @op_list_ref 20
+  @op_is_pair 21
+  @op_tuple_ref 22
+  @op_tuple_size 23
+  @op_map_ref 24
+  @op_map_size 25
+  @op_bin_size 26
 
   ## Public API
 
@@ -72,9 +94,9 @@ defmodule WeftWarpBurrito.Program do
 
   @impl true
   def handle_call({:call, function, args, fuel}, _from, state) do
-    with {:ok, tagged_args} <- encode_args(args) do
-      handles = %{next: 0, values: %{}}
+    handles = %{next: 0, values: %{}, interned: %{}}
 
+    with {:ok, tagged_args, handles} <- encode_args(args, handles) do
       result =
         state.resource
         |> SandboxNif.program_call_nif(function, tagged_args, fuel)
@@ -104,11 +126,13 @@ defmodule WeftWarpBurrito.Program do
   defp trampoline({:ok, tagged}, _resource, handles), do: decode(tagged, handles)
   defp trampoline({:error, _} = error, _resource, _handles), do: error
 
-  ## Host math (RFD 0018): Elixir integers ARE the bignums.
+  ## Host math (RFD 0018): Elixir integers ARE the bignums, and Elixir
+  ## terms ARE the host-owned values behind handles.
 
-  defp host_math(op, a, b, handles) do
-    with {:ok, x} <- unbox(a, handles),
-         {:ok, y} <- unbox(b, handles) do
+  defp host_math(op, a, b, handles)
+       when op in [@op_add, @op_sub, @op_mul, @op_quot, @op_rem, @op_lt, @op_eq] do
+    with {:ok, x} <- unbox_number(a, handles),
+         {:ok, y} <- unbox_number(b, handles) do
       case op do
         @op_add -> box(x + y, handles)
         @op_sub -> box(x - y, handles)
@@ -120,16 +144,100 @@ defmodule WeftWarpBurrito.Program do
         # Comparisons return RAW 0/1 (the guest tags them itself).
         @op_lt -> {:ok, if(x < y, do: 1, else: 0), handles}
         @op_eq -> {:ok, if(x == y, do: 1, else: 0), handles}
-        _ -> {:error, :unknown_host_op}
       end
     end
   end
 
-  defp unbox(tagged, handles) do
+  # pair? never errors: any undecodable or non-list word is just #f.
+  defp host_math(@op_is_pair, a, _b, handles) do
+    case unbox_term(a, handles) do
+      {:ok, list} when is_list(list) and list != [] -> {:ok, 1, handles}
+      _ -> {:ok, 0, handles}
+    end
+  end
+
+  defp host_math(op, a, b, handles) do
+    with {:ok, x} <- unbox_term(a, handles) do
+      case {op, x} do
+        {@op_car, [h | _]} ->
+          box(h, handles)
+
+        {@op_cdr, [_ | t]} ->
+          box(t, handles)
+
+        {@op_length, l} when is_list(l) ->
+          box(length(l), handles)
+
+        {@op_tuple_size, t} when is_tuple(t) ->
+          box(tuple_size(t), handles)
+
+        {@op_map_size, m} when is_map(m) ->
+          box(map_size(m), handles)
+
+        {@op_bin_size, bin} when is_binary(bin) ->
+          box(byte_size(bin), handles)
+
+        {binop, _} when binop in [@op_cons, @op_list_ref, @op_tuple_ref, @op_map_ref] ->
+          with {:ok, y} <- unbox_term(b, handles) do
+            host_binop(binop, x, y, handles)
+          end
+
+        _ ->
+          {:error, :host_op_type_error}
+      end
+    end
+  end
+
+  defp host_binop(@op_cons, x, y, handles) when is_list(y), do: box([x | y], handles)
+
+  defp host_binop(@op_list_ref, x, y, handles) when is_list(x) and is_integer(y) do
+    case Enum.fetch(x, y) do
+      {:ok, value} -> box(value, handles)
+      :error -> {:error, :index_out_of_range}
+    end
+  end
+
+  defp host_binop(@op_tuple_ref, x, y, handles)
+       when is_tuple(x) and is_integer(y) and y >= 0 and y < tuple_size(x),
+       do: box(elem(x, y), handles)
+
+  defp host_binop(@op_map_ref, x, y, handles) when is_map(x) do
+    case Map.fetch(x, y) do
+      {:ok, value} -> box(value, handles)
+      # s7 hash-table-ref: missing key -> #f (tagged, not raw).
+      :error -> {:ok, @false_v, handles}
+    end
+  end
+
+  defp host_binop(_, _, _, _), do: {:error, :host_op_type_error}
+
+  # Numbers only (checked arithmetic): a fixnum or an integer handle.
+  defp unbox_number(tagged, handles) do
+    cond do
+      (tagged &&& 7) == 0 ->
+        {:ok, tagged >>> 3}
+
+      (tagged &&& 7) == @handle_tag ->
+        case fetch_handle(handles, tagged >>> 3) do
+          {:ok, value} when is_integer(value) -> {:ok, value}
+          {:ok, _} -> {:error, :host_math_type_error}
+          error -> error
+        end
+
+      true ->
+        {:error, :host_math_type_error}
+    end
+  end
+
+  # Any term: immediates decode too (nil is Scheme's (), hence []).
+  defp unbox_term(tagged, handles) do
     cond do
       (tagged &&& 7) == 0 -> {:ok, tagged >>> 3}
+      tagged == @true_v -> {:ok, true}
+      tagged == @false_v -> {:ok, false}
+      tagged == @nil_v -> {:ok, []}
       (tagged &&& 7) == @handle_tag -> fetch_handle(handles, tagged >>> 3)
-      true -> {:error, :host_math_type_error}
+      true -> {:error, :host_op_type_error}
     end
   end
 
@@ -140,11 +248,38 @@ defmodule WeftWarpBurrito.Program do
     end
   end
 
-  defp box(value, handles) when value >= @fixnum_min and value <= @fixnum_max do
-    {:ok, value <<< 3, handles}
+  ## Boxing: Elixir term -> tagged GuestValue, allocating handles as
+  ## needed. Atoms are interned (same atom -> same handle) so the
+  ## guest's raw-word eq? is meaningful on them.
+
+  defp box(value, handles)
+       when is_integer(value) and value >= @fixnum_min and value <= @fixnum_max,
+       do: {:ok, value <<< 3, handles}
+
+  defp box(true, handles), do: {:ok, @true_v, handles}
+  defp box(false, handles), do: {:ok, @false_v, handles}
+  defp box(nil, handles), do: {:ok, @nil_v, handles}
+  defp box([], handles), do: {:ok, @nil_v, handles}
+
+  defp box(value, handles) when is_atom(value) do
+    case Map.fetch(handles.interned, value) do
+      {:ok, tagged} ->
+        {:ok, tagged, handles}
+
+      :error ->
+        {:ok, tagged, handles} = new_handle(value, handles)
+        {:ok, tagged, %{handles | interned: Map.put(handles.interned, value, tagged)}}
+    end
   end
 
-  defp box(value, handles) do
+  defp box(value, handles)
+       when is_integer(value) or is_list(value) or is_tuple(value) or is_map(value) or
+              is_binary(value),
+       do: new_handle(value, handles)
+
+  defp box(_, _), do: {:error, :unsupported_value}
+
+  defp new_handle(value, handles) do
     index = handles.next
     handles = %{handles | next: index + 1, values: Map.put(handles.values, index, value)}
     {:ok, index <<< 3 ||| @handle_tag, handles}
@@ -152,28 +287,18 @@ defmodule WeftWarpBurrito.Program do
 
   ## GuestValue codec
 
-  defp encode_args(args) do
-    Enum.reduce_while(args, {:ok, []}, fn arg, {:ok, acc} ->
-      case encode_arg(arg) do
-        {:ok, tagged} -> {:cont, {:ok, [tagged | acc]}}
+  defp encode_args(args, handles) do
+    Enum.reduce_while(args, {:ok, [], handles}, fn arg, {:ok, acc, handles} ->
+      case box(arg, handles) do
+        {:ok, tagged, handles} -> {:cont, {:ok, [tagged | acc], handles}}
         error -> {:halt, error}
       end
     end)
     |> case do
-      {:ok, reversed} -> {:ok, Enum.reverse(reversed)}
+      {:ok, reversed, handles} -> {:ok, Enum.reverse(reversed), handles}
       error -> error
     end
   end
-
-  defp encode_arg(value)
-       when is_integer(value) and value >= @fixnum_min and
-              value <= @fixnum_max,
-       do: {:ok, value <<< 3}
-
-  defp encode_arg(true), do: {:ok, @true_v}
-  defp encode_arg(false), do: {:ok, @false_v}
-  defp encode_arg(nil), do: {:ok, @nil_v}
-  defp encode_arg(_), do: {:error, :unsupported_argument}
 
   defp decode(tagged, handles) do
     cond do

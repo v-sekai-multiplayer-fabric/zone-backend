@@ -21,7 +21,10 @@ bool is_special_form(const std::string& s) {
 
 bool is_primitive(const std::string& s) {
   return s == "+" || s == "-" || s == "*" || s == "quotient" || s == "remainder" || s == "<" ||
-         s == ">" || s == ">=" || s == "<=" || s == "=" || s == "eq?" || s == "not";
+         s == ">" || s == ">=" || s == "<=" || s == "=" || s == "eq?" || s == "not" ||
+         s == "car" || s == "cdr" || s == "cons" || s == "list" || s == "length" ||
+         s == "list-ref" || s == "pair?" || s == "null?" || s == "vector-ref" ||
+         s == "vector-length" || s == "hash-table-ref" || s == "string-length";
 }
 
 // Lowering context: functions live in a deque so references stay stable
@@ -249,6 +252,22 @@ struct FnCodegen {
     if (op == "=") return gen_numeric_eq(e);
     if (op == "eq?") return gen_identity_eq(e);
     if (op == "not") return gen_not(e);
+
+    // Handle-value primitives (host-owned List/Tuple/Map/Binary/Atom):
+    // every structural operation goes through the trampoline, except
+    // null? which is a pure tag test (nil is an immediate).
+    if (op == "car") return gen_host_prim(e, kHostCar, 1, /*raw_bool=*/false);
+    if (op == "cdr") return gen_host_prim(e, kHostCdr, 1, false);
+    if (op == "cons") return gen_host_prim(e, kHostCons, 2, false);
+    if (op == "list") return gen_list_ctor(e);
+    if (op == "length") return gen_host_prim(e, kHostLength, 1, false);
+    if (op == "list-ref") return gen_host_prim(e, kHostListRef, 2, false);
+    if (op == "pair?") return gen_host_prim(e, kHostIsPair, 1, /*raw_bool=*/true);
+    if (op == "null?") return gen_null_p(e);
+    if (op == "vector-ref") return gen_host_prim(e, kHostTupleRef, 2, false);
+    if (op == "vector-length") return gen_host_prim(e, kHostTupleSize, 1, false);
+    if (op == "hash-table-ref") return gen_host_prim(e, kHostMapRef, 2, false);
+    if (op == "string-length") return gen_host_prim(e, kHostBinSize, 1, false);
 
     return gen_call(e);
   }
@@ -513,6 +532,48 @@ struct FnCodegen {
   int gen_identity_eq(const SExpr& e) {
     if (e.list.size() != 3) fail("eq? wants 2 arguments");
     int diff = emit_binop(Op::XOR, gen_expr(e.list[1]), gen_expr(e.list[2]));
+    return tag_raw_bool(emit_eqz(diff));
+  }
+
+  // --- Handle-value primitives ---
+
+  int emit_host_op(int64_t host_op, int a, int b) {
+    int dst = new_vreg();
+    Instr in;
+    in.op = Op::HOST_OP;
+    in.dst = dst;
+    in.a = a;
+    in.b = b;
+    in.imm = host_op;
+    emit(in);
+    return dst;
+  }
+
+  int gen_host_prim(const SExpr& e, int64_t host_op, size_t arity, bool raw_bool) {
+    if (e.list.size() != arity + 1) {
+      fail(e.list[0].sym + " wants " + std::to_string(arity) + " argument(s)");
+    }
+    int a = gen_expr(e.list[1]);
+    // Unary ops still ship two operands (fixed trampoline ABI); nil pads.
+    int b = arity == 2 ? gen_expr(e.list[2]) : emit_imm(kNil);
+    int result = emit_host_op(host_op, a, b);
+    return raw_bool ? tag_raw_bool(result) : result;
+  }
+
+  // (list a b ...) -> right-folded cons chain ending in nil. (list) is nil.
+  int gen_list_ctor(const SExpr& e) {
+    std::vector<int> elems;
+    for (size_t i = 1; i < e.list.size(); ++i) elems.push_back(gen_expr(e.list[i]));
+    int acc = emit_imm(kNil);
+    for (size_t i = elems.size(); i-- > 0;) acc = emit_host_op(kHostCons, elems[i], acc);
+    return acc;
+  }
+
+  // (null? x): nil is an immediate, so this never leaves the guest.
+  int gen_null_p(const SExpr& e) {
+    if (e.list.size() != 2) fail("null? wants 1 argument");
+    int n = emit_imm(kNil);
+    int diff = emit_binop(Op::XOR, gen_expr(e.list[1]), n);
     return tag_raw_bool(emit_eqz(diff));
   }
 

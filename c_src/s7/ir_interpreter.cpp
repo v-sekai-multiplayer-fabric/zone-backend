@@ -21,9 +21,9 @@ constexpr int64_t kOracleFuncBase = 1ll << 40;
 struct Interp {
   const IRProgram& program;
   uint64_t steps_left;
+  HostBignumTable& bignums;
   std::unordered_map<int64_t, int64_t> mem;
   int64_t heap_next = static_cast<int64_t>(kHeapBase) + 8;
-  HostBignumTable bignums;
 
   int64_t run(int func_index, const std::vector<int64_t>& args) {
     if (func_index < 0 || func_index >= static_cast<int>(program.functions.size())) {
@@ -133,6 +133,9 @@ struct Interp {
         case Op::CHECKED_EQ:
           vregs[in.dst] = bignums.apply(kHostEq, vregs[in.a], vregs[in.b]);
           break;
+        case Op::HOST_OP:
+          vregs[in.dst] = bignums.apply(in.imm, vregs[in.a], vregs[in.b]);
+          break;
         case Op::CALL_INDIRECT: {
           int64_t target = vregs[in.a];
           int64_t idx = (target - kOracleFuncBase) / 8;
@@ -157,8 +160,9 @@ struct Interp {
 }  // namespace
 
 int64_t interpret(const IRProgram& program, int func_index, const std::vector<int64_t>& args,
-                  uint64_t max_steps) {
-  Interp interp{program, max_steps};
+                  uint64_t max_steps, HostBignumTable* table) {
+  HostBignumTable local;
+  Interp interp{program, max_steps, table ? *table : local};
   return interp.run(func_index, args);
 }
 
