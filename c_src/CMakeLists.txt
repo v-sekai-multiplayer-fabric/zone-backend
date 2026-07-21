@@ -42,6 +42,9 @@ target_link_libraries(verify_guest PRIVATE riscv)
 # currently embeds -- same language, two execution strategies.
 add_executable(verify_s7
   host_test/verify_s7.cpp
+  s7/reader.cpp
+  s7/codegen.cpp
+  s7/ir_interpreter.cpp
   s7/riscv_codegen.cpp
   s7/elf_builder.cpp
   s7/compiler.cpp

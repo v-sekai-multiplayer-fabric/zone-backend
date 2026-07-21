@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 K. S. Ernest (iFire) Lee
 //
-// Stage 0 top-level entry point: hardcoded `(+ 1 2)` program, no reader/
-// parser yet (that's Stage 1). Proves the ir -> riscv_codegen -> elf_builder
-// pipeline shape end to end.
+// Top-level pipeline (same 5-stage shape as the reference compiler,
+// with the s-expression reader replacing lexer+parser):
+//   read_all -> lower (s-exprs -> IR) -> [optimizer: identity for now]
+//   -> generate_riscv -> build_elf
+// The IRProgram is exposed alongside the ELF so callers can run the IR
+// interpreter as an independent correctness oracle against the same
+// lowering that produced the machine code.
 #pragma once
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "ir.h"
+
 namespace s7 {
 
-// Compiles the fixed Stage-0 program `(+ 1 2)` to a RISC-V ELF exposing
-// one function, `func_name`, taking no arguments and returning 3 in a0.
-std::vector<uint8_t> compile_stage0(const std::string& func_name);
+struct Compiled {
+  IRProgram ir;
+  std::vector<uint8_t> elf;
+};
+
+// Compiles s7-subset Scheme source (top-level defines) to a RISC-V ELF.
+// Throws std::runtime_error with a stage-prefixed message on any error.
+Compiled compile(const std::string& source);
 
 }  // namespace s7

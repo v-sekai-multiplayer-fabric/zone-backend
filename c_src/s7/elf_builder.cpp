@@ -10,7 +10,6 @@ namespace {
 
 constexpr uint16_t kEtExec = 2;
 constexpr uint16_t kEmRiscv = 243;
-constexpr uint32_t kShtNull = 0;
 constexpr uint32_t kShtProgbits = 1;
 constexpr uint32_t kShtSymtab = 2;
 constexpr uint32_t kShtStrtab = 3;
@@ -18,7 +17,6 @@ constexpr uint64_t kShfAlloc = 0x2;
 constexpr uint64_t kShfExecinstr = 0x4;
 constexpr uint32_t kPtLoad = 1;
 constexpr uint32_t kPfExec = 1;
-constexpr uint32_t kPfWrite = 2;
 constexpr uint32_t kPfRead = 4;
 constexpr uint64_t kPageSize = 0x1000;
 
@@ -92,36 +90,30 @@ void pad_to(std::vector<uint8_t>& out, size_t offset) {
 
 }  // namespace
 
-std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::string& func_name) {
+std::vector<uint8_t> build_elf(const CompiledProgram& program) {
   std::vector<uint8_t> out;
+  const std::vector<uint8_t>& code = program.code;
 
-  // --- Layout plan ---
-  // 0                : Ehdr (64 bytes)
-  // 64               : Phdr (56 bytes)
-  // kPageSize (0x1000): .text (code)
-  // ... (unaligned)  : .symtab, .strtab, .shstrtab
-  // ... (unaligned)  : section header table
-
+  // Layout: Ehdr | Phdr | (pad to page) .text | .symtab | .strtab | .shstrtab | shdrs
   const uint64_t text_file_offset = kPageSize;
   const uint64_t text_vaddr = kBaseAddr;
 
-  // .strtab: index 0 is the conventional empty string.
+  // .strtab (index 0 = empty string) + .symtab (index 0 = null symbol).
   std::vector<uint8_t> strtab;
   strtab.push_back(0);
-  const uint32_t func_name_off = static_cast<uint32_t>(strtab.size());
-  append_bytes(strtab, func_name.data(), func_name.size());
-  strtab.push_back(0);
+  std::vector<Elf64_Sym> symtab(1, Elf64_Sym{});
+  for (const CompiledFunction& func : program.functions) {
+    Elf64_Sym sym{};
+    sym.st_name = static_cast<uint32_t>(strtab.size());
+    append_bytes(strtab, func.name.data(), func.name.size());
+    strtab.push_back(0);
+    sym.st_info = (1 << 4) | 2;  // STB_GLOBAL, STT_FUNC
+    sym.st_shndx = 1;            // .text section index
+    sym.st_value = text_vaddr + func.offset;
+    sym.st_size = func.size;
+    symtab.push_back(sym);
+  }
 
-  // .symtab: [0] = null symbol, [1] = our function.
-  std::vector<Elf64_Sym> symtab(2, Elf64_Sym{});
-  symtab[1].st_name = func_name_off;
-  symtab[1].st_info = (1 << 4) | 2;  // STB_GLOBAL, STT_FUNC
-  symtab[1].st_other = 0;
-  symtab[1].st_shndx = 1;  // .text section index
-  symtab[1].st_value = text_vaddr;
-  symtab[1].st_size = code.size();
-
-  // .shstrtab: section name strings.
   std::vector<uint8_t> shstrtab;
   shstrtab.push_back(0);
   auto add_shstr = [&shstrtab](const char* name) {
@@ -139,7 +131,6 @@ std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::stri
   const uint64_t shstrtab_file_offset = strtab_file_offset + strtab.size();
   const uint64_t shoff = shstrtab_file_offset + shstrtab.size();
 
-  // --- Ehdr ---
   Elf64_Ehdr ehdr{};
   ehdr.e_ident[0] = 0x7f;
   ehdr.e_ident[1] = 'E';
@@ -154,7 +145,6 @@ std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::stri
   ehdr.e_entry = text_vaddr;
   ehdr.e_phoff = 64;
   ehdr.e_shoff = shoff;
-  ehdr.e_flags = 0;
   ehdr.e_ehsize = sizeof(Elf64_Ehdr);
   ehdr.e_phentsize = sizeof(Elf64_Phdr);
   ehdr.e_phnum = 1;
@@ -162,7 +152,6 @@ std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::stri
   ehdr.e_shnum = 5;  // null, .text, .symtab, .strtab, .shstrtab
   ehdr.e_shstrndx = 4;
 
-  // --- Phdr: one R+X PT_LOAD segment covering .text ---
   Elf64_Phdr phdr{};
   phdr.p_type = kPtLoad;
   phdr.p_flags = kPfRead | kPfExec;
@@ -181,7 +170,6 @@ std::vector<uint8_t> build_elf(const std::vector<uint8_t>& code, const std::stri
   append_bytes(out, strtab.data(), strtab.size());
   append_bytes(out, shstrtab.data(), shstrtab.size());
 
-  // --- Section headers ---
   Elf64_Shdr sh_null{};
   Elf64_Shdr sh_text{};
   sh_text.sh_name = name_text;
