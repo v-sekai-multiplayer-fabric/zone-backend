@@ -63,3 +63,14 @@ add_executable(verify_float_determinism
   lockstep/vector3.c)
 target_include_directories(verify_float_determinism PRIVATE lockstep)
 target_link_libraries(verify_float_determinism PRIVATE riscv)
+
+# RFD 0043's other two float-determinism strategies (RFD 0042):
+# fixed-point ("ban floats"/"integer-only") and a minimal illustrative
+# softfloat. Same manual-build convention as verify_float_determinism
+# above -- build explicitly with
+#   cmake --build build --target verify_alt_strategies
+add_executable(verify_alt_strategies
+  host_test/verify_alt_strategies.cpp
+  lockstep/guest_alt.c)
+target_include_directories(verify_alt_strategies PRIVATE lockstep)
+target_link_libraries(verify_alt_strategies PRIVATE riscv)

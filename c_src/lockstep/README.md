@@ -25,6 +25,23 @@ for the full writeup and findings.
   against native execution of the identical source.
 - `../../lean/LockstepDeterminism.lean` -- the Lean4 spec these C
   implementations are checked against.
+- `fixedpoint.h` -- Q32.32 fixed-point `dot_ref`/`dot_bad`, standing in
+  for RFD 0042's "ban floats entirely" and "fixed-point/integer-only"
+  candidates (the same underlying mechanism: no float types, replaced
+  by scaled integers).
+- `softfloat_mini.h` -- a minimal, illustrative software double-
+  precision add/multiply (NOT the production-grade Berkeley SoftFloat,
+  BSD-3-Clause, confirmed FOSS, RFD 0042's real-world option for this
+  strategy), standing in for RFD 0042's "softfloat emulation" candidate.
+- `validate_softfloat.c` -- sanity-checks `softfloat_mini.h` against
+  native hardware double arithmetic (run with `-O0`, see below for why)
+  before trusting it for the cross-platform comparison.
+- `guest_alt.c` -- exposes the fixed-point and softfloat functions with
+  guest-callable signatures (raw `int64_t`/`uint64_t`, not `double`, so
+  no hardware float instruction is ever involved on either strategy).
+- `../host_test/verify_alt_strategies.cpp` -- the same native-vs-
+  libriscv comparison as `verify_float_determinism.cpp`, for these two
+  strategies.
 
 ## Reproducing the verification
 
@@ -61,6 +78,26 @@ riscv-none-elf-gcc -march=rv64gc -mabi=lp64d -static -O2 -ffreestanding \
 cmake --build build --target verify_float_determinism
 ./build/verify_float_determinism guest_default.elf
 ./build/verify_float_determinism guest_strict.elf
+
+# 5. The other two RFD 0042 strategies (fixed-point, softfloat): first
+#    sanity-check the softfloat implementation against native hardware
+#    arithmetic. Must be built with -O0 -- at -O2 a compiler can
+#    constant-fold the literal-double "native" expressions at compile
+#    time using higher-than-double precision, which produced a false
+#    mismatch here during this RFD's own verification (see the RFD).
+clang -O0 c_src/lockstep/validate_softfloat.c -Ic_src/lockstep -o validate_softfloat
+./validate_softfloat
+
+# 6. Cross-compile the fixed-point/softfloat guest functions to RISC-V
+#    (raw int64/uint64 signatures -- no double anywhere in this ELF at
+#    all, so there is no hardware float instruction to diverge):
+riscv-none-elf-gcc -march=rv64gc -mabi=lp64d -static -O2 -ffreestanding \
+  -Wl,--undefined=fixed_dot_ref_i64 -Wl,--undefined=fixed_dot_bad_i64 \
+  -Wl,--undefined=soft_dot_ref_bits -Wl,--undefined=soft_dot_bad_bits \
+  -nostartfiles c_src/lockstep/guest_alt.c -o guest_alt.elf
+
+cmake --build build --target verify_alt_strategies
+./build/verify_alt_strategies guest_alt.elf
 ```
 
 ## What this proved (see the RFD for the full narrative)
@@ -79,3 +116,14 @@ cmake --build build --target verify_float_determinism
   verification used only that input and drew a false conclusion from an
   unrelated register-read bug in the harness itself (see the RFD). Test
   with an input that actually rounds.
+- **Fixed-point and softfloat are both bit-identical between native and
+  libriscv unconditionally** (no compiler-flag discipline needed,
+  unlike native float) -- but they differ from each other in a way that
+  matters: fixed-point's `dot_ref` and `dot_bad` are bit-identical to
+  *each other* too (integer arithmetic has no rounding step for
+  reassociation to interact with, so the hazard doesn't exist at all),
+  while softfloat's `dot_ref`/`dot_bad` still genuinely diverge from
+  each other (softfloat faithfully implements the same IEEE 754
+  rounding rules as hardware float -- it removes the cross-compiler/
+  cross-architecture FMA-contraction risk specifically, not the
+  reassociation-matters concern itself).

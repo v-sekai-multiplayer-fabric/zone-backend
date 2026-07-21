@@ -5,7 +5,7 @@ discussion: N/A -- committed directly, no PR review
 labels: sandbox, determinism, lockstep, floating-point, proof-of-concept
 ---
 
-# 0043 Lockstep float-determinism proof of concept: Lean4 -> CBMC -> RISC-V -> libriscv, worked end-to-end
+# 0043 Lockstep float-determinism proof of concept: Lean4 -> CBMC -> RISC-V -> libriscv, all four RFD 0042 strategies tested
 
 ## Context
 
@@ -15,7 +15,11 @@ equivalence checking) and RFD 0042 chose the float-determinism strategy
 both by scoring and reasoning, not by building anything. This RFD is
 that pipeline actually built, once, end-to-end, against a single
 concrete primitive (`Vector3.dot`), plus toolchain setup notes and an
-honest account of a real bug found and fixed along the way.
+honest account of two real bugs found and fixed along the way. It
+covers all four of RFD 0042's candidates empirically, not just the
+winner: disciplined native float (the winner), fixed-point/"ban
+floats" (the same underlying mechanism), and a minimal illustrative
+softfloat.
 
 **Toolchain**: `lean`/`lake` (already installed), `riscv-none-elf-gcc`
 (already installed, globally -- this is the same cross-compiler RFD
@@ -45,6 +49,15 @@ recording, not just "somehow got it working."
   guest ELF (cross-compiled by hand from the identical `vector3.c`)
   into this repo's own vendored `libriscv`, and compares its output
   against native execution.
+- `c_src/lockstep/fixedpoint.h` -- Q32.32 fixed-point `dot_ref`/
+  `dot_bad`, standing in for "ban floats entirely" and "fixed-point/
+  integer-only" (the same mechanism: no float types, scaled integers).
+- `c_src/lockstep/softfloat_mini.h` -- a minimal, illustrative software
+  double add/multiply (not the production-grade Berkeley SoftFloat,
+  BSD-3-Clause, confirmed FOSS, RFD 0042's real-world option), standing
+  in for "softfloat emulation."
+- `c_src/lockstep/guest_alt.c`, `c_src/host_test/verify_alt_strategies.cpp`
+  -- the same native-vs-`libriscv` comparison, for these two strategies.
 - `c_src/lockstep/README.md` -- exact reproduction commands.
 
 ## Findings
@@ -136,6 +149,75 @@ same skepticism as the code it's checking. A too-convenient early
 result (in this case, one that lined up with what RFD 0042 predicted)
 was still checked with an independent sanity test before being trusted.
 
+## The other three RFD 0042 strategies, empirically tested
+
+Findings 1-5 above and the register-index bug both concern disciplined
+native float, the STAR vote's winner. The other three candidates were
+built and tested the same way (native-vs-`libriscv` comparison,
+`c_src/lockstep/guest_alt.c` + `verify_alt_strategies.cpp`):
+
+**6. Fixed-point and softfloat are both bit-identical between native
+and libriscv unconditionally** -- neither needs `-ffp-contract`
+discipline the way native float does, confirming RFD 0042's own
+reasoning for why they were scored as safer-but-costlier alternatives.
+
+**7. Fixed-point eliminates the reassociation hazard entirely, not
+just the cross-platform-FMA risk.** With Q32.32 fixed-point,
+`dot_ref` and `dot_bad` (the differently-associated form) are
+bit-identical to *each other*, not just across platforms -- integer
+arithmetic has no rounding step for reassociation to interact with, so
+the hazard this whole RFD is about doesn't exist for this strategy at
+all. This is the sharpest empirical confirmation of RFD 0042's own
+scoring rationale ("buys determinism by removing the rounding-order
+question entirely, not by controlling it").
+
+**8. Softfloat removes the cross-platform risk but NOT the
+reassociation hazard.** Unlike fixed-point, softfloat's `dot_ref` and
+`dot_bad` still genuinely diverge from each other (`0.21299999999999999`
+vs. `0.21300000000000002`), matching native hardware float's own
+behavior exactly -- softfloat faithfully implements the same IEEE 754
+rounding rules, it just does so without a hardware FMA instruction for
+a compiler to fuse into. This is a real, useful distinction RFD 0042's
+literature-only comparison couldn't have shown: fixed-point and
+softfloat are not interchangeable "safer" options, they trade off
+differently. Softfloat still needs the same operation-order discipline
+disciplined native float needs; fixed-point doesn't.
+
+**9. A second bug, in the softfloat implementation itself, caught by
+its own validation step before being trusted.** `soft_add`'s
+normalization logic originally used two sequential shift-direction
+while-loops (shift left while a target bit is clear; separately, shift
+right if bits above it are set) that could actively fight each other:
+a same-sign addition's carry-out could leave the result's highest bit
+*above* the target position, and the left-shift loop -- which only
+checked "is the target bit clear," with no awareness the value might
+already be higher -- would shift further away from correct before the
+right-shift loop ever got a chance to run. Caught immediately by
+`validate_softfloat.c` (`1.5 + 2.5` computed `0.00390625` instead of
+`4`) before this implementation was used for any cross-platform claim.
+Fixed by finding the single highest set bit first and shifting exactly
+once, in the direction that bit actually requires.
+
+**10. Even the fix's own validation initially looked wrong, for a
+third, unrelated reason -- constant folding.** After fixing finding 9,
+`validate_softfloat.c`'s full-dot-product comparison (`dot_bad`
+specifically) still appeared to mismatch between "native" and "soft"
+at `-O2`. This was not a bug in the fix: the test computed "native"
+by writing the arithmetic expression inline with literal double
+constants, which an optimizing compiler is free to constant-fold at
+compile time using higher-than-double precision -- not a genuine
+runtime double computation, and therefore not a fair comparison against
+the software implementation's real runtime arithmetic. Rebuilding with
+`-O0` (forcing genuine runtime double arithmetic) resolved it
+immediately; `c_src/lockstep/validate_softfloat.c`'s header comment and
+`README.md` both say to build this file with `-O0` specifically,
+permanently, not just as a one-off troubleshooting note.
+
+Findings 9 and 10 reinforce the same lesson as the register-index bug:
+**every stage of this pipeline needed independent verification before
+being trusted, including the verification code itself, twice over in
+softfloat's case.**
+
 ## Confirmation
 
 `c_src/host_test/verify_float_determinism.cpp`, built via
@@ -147,3 +229,13 @@ native/libriscv in all four combinations tried (2 input sets x 2 flag
 configurations); `dot_bad` diverges exactly when expected (inexact-
 multiplication input, mismatched or default `-ffp-contract`) and never
 otherwise.
+
+`c_src/host_test/verify_alt_strategies.cpp`, built via
+`cmake --build build --target verify_alt_strategies`, confirms
+fixed-point and softfloat both bit-identical between native and
+libriscv unconditionally, with fixed-point additionally eliminating the
+`dot_ref`-vs-`dot_bad` divergence entirely (softfloat does not).
+`c_src/lockstep/validate_softfloat.c` (built with `-O0`) confirms the
+softfloat implementation matches native hardware double arithmetic
+across a range of add/multiply/dot-product cases before being trusted
+for the cross-platform claim.
