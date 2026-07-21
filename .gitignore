@@ -61,12 +61,9 @@ result
 .elixir-tools
 priv/pow_cache.dets
 
-# Native build outputs (root Makefile: weft sandbox guest/NIF)
+# Native build outputs (root Makefile: weft sandbox NIF)
 priv/weft_sandbox_nif.dll
 priv/weft_sandbox_nif.so
-priv/weft_guest.elf
-priv/s7_basic.elf
-priv/rebac.elf
-priv/planner.elf
 c_src/guest/*.o
 /build/
+priv/plts/

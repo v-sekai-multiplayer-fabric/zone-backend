@@ -11,5 +11,5 @@ defmodule Uro.ReBAC do
   def add_edge(graph, subj, obj, rel), do: adapter().add_edge(graph, subj, obj, rel)
   def check_rel(graph, subj, rel, obj), do: adapter().check_rel(graph, subj, rel, obj)
 
-  defp adapter, do: Application.get_env(:uro, :rebac_adapter, Uro.ReBAC.SandboxAdapter)
+  defp adapter, do: Application.get_env(:uro, :rebac_adapter, Uro.ReBAC.ElixirAdapter)
 end

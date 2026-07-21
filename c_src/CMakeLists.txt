@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
 #
-# Standalone verification for guest/weft_guest.elf, plus the actual
-# NIF shared library the Elixir GenServer loads. No engine/Godot build
-# involved - libriscv::Machine is a pure host-side C++ library, fully
-# testable on its own (same principle the weft-warp-loop session this
-# was ported from already proved for the fabric-godot-core Sandbox
+# The NIF shared library the Elixir GenServer loads. No engine/Godot
+# build involved - libriscv::Machine is a pure host-side C++ library,
+# fully testable on its own (same principle the weft-warp-loop session
+# this was ported from already proved for the fabric-godot-core Sandbox
 # port).
 cmake_minimum_required(VERSION 3.20)
 project(weft_warp_burrito_native CXX C)
@@ -23,10 +22,6 @@ set(RISCV_32I OFF CACHE BOOL "" FORCE)
 set(RISCV_64I ON CACHE BOOL "" FORCE)
 set(RISCV_BINARY_TRANSLATION OFF CACHE BOOL "" FORCE)
 add_subdirectory(thirdparty/libriscv/lib)
-# s7_init() alone needs more heap than libriscv's 1MB default - see
-# weft-warp-loop/flow-toolchain/CMakeLists.txt's own identical comment
-# for the malloc-returns-NULL protection-fault history this fixes.
-target_compile_definitions(riscv PUBLIC RISCV_BRK_MEMORY_SIZE=134217728ull)
 # The host-math ecall (RFD 0018) lives at 600, past godot-sandbox's
 # 500-549 block; libriscv's default syscall table caps at 512. PUBLIC:
 # the table size is baked into Machine's layout, so every consumer must
@@ -35,54 +30,6 @@ target_compile_definitions(riscv PUBLIC RISCV_SYSCALLS_MAX=1024)
 if(WIN32)
   target_compile_definitions(riscv PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
-
-add_executable(verify_guest host_test/verify_guest.cpp)
-target_link_libraries(verify_guest PRIVATE riscv)
-
-# Stage 0 of the s7 (Lisp-1) -> RISC-V compiler roadmap (docs/decisions):
-# proves the ir -> riscv_codegen -> elf_builder pipeline produces a working
-# RISC-V ELF with zero external cross-compiler (no riscv-none-elf-gcc)
-# involved. c_src/s7/ is our ahead-of-time compiler for the s7 Scheme
-# dialect; c_src/thirdparty/s7/ is the upstream s7 interpreter the guest
-# currently embeds -- same language, two execution strategies.
-set(S7_COMPILER_SOURCES
-  s7/reader.cpp
-  s7/codegen.cpp
-  s7/ir_interpreter.cpp
-  s7/riscv_codegen.cpp
-  s7/elf_builder.cpp
-  s7/compiler.cpp
-)
-
-add_executable(verify_s7 host_test/verify_s7.cpp ${S7_COMPILER_SOURCES})
-target_link_libraries(verify_s7 PRIVATE riscv)
-
-# Standalone CLI: compile .scm to a RISC-V ELF (and optionally execute
-# it in libriscv) outside the test harness or any BEAM involvement.
-add_executable(s7c s7/s7c.cpp ${S7_COMPILER_SOURCES})
-target_link_libraries(s7c PRIVATE riscv)
-
-# Stage 3 fidelity: the REAL s7 interpreter compiled host-side (same
-# s7.c the guest embeds, natively this time) as the semantic oracle the
-# AOT compiler's output is diffed against.
-add_library(s7_host STATIC thirdparty/s7/s7.c)
-target_include_directories(s7_host PUBLIC thirdparty/s7)
-# guest/ provides the (empty) mus-config.h stub s7.c unconditionally
-# includes -- same one the RISC-V guest build uses.
-target_include_directories(s7_host PRIVATE guest)
-target_compile_definitions(s7_host PRIVATE WITH_C_LOADER=0 WITH_SYSTEM_EXTRAS=0)
-add_executable(verify_s7_fidelity host_test/verify_s7_fidelity.cpp ${S7_COMPILER_SOURCES})
-target_link_libraries(verify_s7_fidelity PRIVATE riscv s7_host)
-
-# Stage 4: ReBAC ported to compiled Scheme (RFD 0022) against a
-# hand-written reference oracle mirroring standalone/tw_rebac.hpp.
-add_executable(verify_rebac host_test/verify_rebac.cpp ${S7_COMPILER_SOURCES})
-target_link_libraries(verify_rebac PRIVATE riscv)
-
-# Stage 5A: HTN planner ported to compiled Scheme (RFD 0023) against a
-# hand-written reference oracle mirroring standalone/tw_planner.hpp.
-add_executable(verify_planner host_test/verify_planner.cpp ${S7_COMPILER_SOURCES})
-target_link_libraries(verify_planner PRIVATE riscv)
 
 # The actual NIF the Elixir GenServer loads. ERTS_INCLUDE_DIR is passed
 # in by c_src/Makefile (elixir_make's entry point) - not hardcoded,

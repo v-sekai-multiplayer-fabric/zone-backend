@@ -1,33 +1,26 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
-defmodule Uro.ReBAC.SandboxAdapterDifferentialTest do
+defmodule Uro.ReBAC.ElixirAdapterTest do
   @moduledoc """
-  Regression suite for `Uro.ReBAC.SandboxAdapter` (compiled Scheme in
-  the libriscv guest, RFD 0022 -- Stage 4 of the sandbox roadmap).
-
-  These cases originally ran through both `Uro.ReBAC.TaskweftAdapter`
-  (the native `tw_rebac.hpp` NIF) and `Uro.ReBAC.SandboxAdapter`,
-  asserting agreement, to prove the port before the RFD 0038 config-flip
-  that made the sandbox adapter the only one. The native adapter is now
-  retired, so each case just pins the value that comparison already
-  proved correct.
+  Regression suite for `Uro.ReBAC.ElixirAdapter` (plain Elixir, RFD
+  0040). These cases originally ran through both
+  `Uro.ReBAC.TaskweftAdapter` (the native `tw_rebac.hpp` NIF) and then
+  `Uro.ReBAC.SandboxAdapter` (compiled Scheme in the libriscv guest,
+  RFD 0022), asserting agreement, before both were retired (RFD 0038,
+  RFD 0039) in favor of this direct port. Each case just pins the value
+  that comparison already proved correct.
   """
   use ExUnit.Case, async: true
 
-  alias Uro.ReBAC.SandboxAdapter
-
-  # SandboxAdapter.Program is booted globally by Uro.Application, since
-  # RFD 0038 made Uro.ReBAC.SandboxAdapter the default :rebac_adapter --
-  # no per-test start_supervised! needed (and starting a second one under
-  # the same name would collide with the already-running one).
+  alias Uro.ReBAC.ElixirAdapter
 
   defp build(edges) do
-    Enum.reduce(edges, SandboxAdapter.new_graph(), fn {subj, obj, rel}, graph ->
-      SandboxAdapter.add_edge(graph, subj, obj, rel)
+    Enum.reduce(edges, ElixirAdapter.new_graph(), fn {subj, obj, rel}, graph ->
+      ElixirAdapter.add_edge(graph, subj, obj, rel)
     end)
   end
 
-  defp check(edges, subj, rel, obj), do: build(edges) |> SandboxAdapter.check_rel(subj, rel, obj)
+  defp check(edges, subj, rel, obj), do: build(edges) |> ElixirAdapter.check_rel(subj, rel, obj)
 
   test "direct edge match" do
     edges = [{"alice", "zone1", "OWNS"}]

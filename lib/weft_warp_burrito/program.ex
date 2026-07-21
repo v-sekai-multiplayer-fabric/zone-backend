@@ -2,16 +2,25 @@
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
 defmodule WeftWarpBurrito.Program do
   @moduledoc """
-  One actor per s7c-compiled RISC-V program (RFD 0018's BEAM half).
+  One actor per RISC-V program using the tagged-GuestValue host-call
+  ABI (RFD 0018's BEAM half). Currently unused in production -- the two
+  callers this existed for, `Uro.ReBAC.SandboxAdapter` and
+  `Uro.Planner.SandboxAdapter`, were retired in favor of plain-Elixir
+  ports (RFD 0039) once their domains turned out to be trusted, bundled
+  content rather than the adversarial input a RISC-V sandbox exists to
+  contain. Kept as generic infrastructure for a future genuinely-
+  untrusted-content guest program (`WeftWarpBurrito.Sandbox` is the
+  fixed-capability sibling for that same libriscv::Machine boundary --
+  also currently unused, since `Uro.LoopCore.Instance` moved
+  combat/loot/progression off the sandbox entirely, RFD 0026/0027).
 
-  Runs functions exported by ELFs produced by the in-repo s7 AOT
-  compiler (`c_src/s7`), driving the host-call trampoline: when guest
-  fixnum arithmetic overflows (or touches a bignum handle), the guest
-  ecalls, the Machine stops with its state intact in the NIF resource,
-  and this GenServer computes the operation with Elixir's native
-  arbitrary-precision integers before resuming execution. Bignums
-  therefore cross the boundary as real Elixir integers -- no GMP, no
-  vendored numeric library.
+  Drives the host-call trampoline: when guest fixnum arithmetic
+  overflows (or touches a bignum handle), the guest ecalls, the Machine
+  stops with its state intact in the NIF resource, and this GenServer
+  computes the operation with Elixir's native arbitrary-precision
+  integers before resuming execution. Bignums therefore cross the
+  boundary as real Elixir integers -- no GMP, no vendored numeric
+  library.
 
   The per-call handle table lives here, in plain Elixir state, and is
   discarded when the call completes (godot-sandbox CurrentState
@@ -35,7 +44,9 @@ defmodule WeftWarpBurrito.Program do
 
   @default_fuel 100_000_000
 
-  # Tagged GuestValue constants -- must match c_src/s7/value.h.
+  # Tagged GuestValue constants -- must match whatever ELF the caller
+  # loads (RFD 0018's fixed tagging scheme: any guest program using this
+  # ABI encodes values this same way).
   @false_v 0x06
   @true_v 0x0E
   @nil_v 0x16
@@ -44,7 +55,7 @@ defmodule WeftWarpBurrito.Program do
   @fixnum_min -(1 <<< 60)
   @fixnum_max (1 <<< 60) - 1
 
-  # Host-math ops -- must match c_src/s7/value.h.
+  # Host-math ops -- must match whatever ELF the caller loads.
   @op_add 0
   @op_sub 1
   @op_mul 2
@@ -67,6 +78,7 @@ defmodule WeftWarpBurrito.Program do
   @op_bin_size 26
   @op_str_eq 27
   @op_map_set 28
+  @op_map_keys 29
 
   ## Public API
 
@@ -166,6 +178,14 @@ defmodule WeftWarpBurrito.Program do
     with {:ok, [key, value]} <- unbox_term(b, handles),
          {:ok, base} <- unbox_map_or_false(a, handles) do
       box(Map.put(base, key, value), handles)
+    end
+  end
+
+  # (hash-table-keys m): `a` may be #f (an empty map, mirroring
+  # hash-table-ref's own "missing key -> #f" convention) -> nil.
+  defp host_math(@op_map_keys, a, _b, handles) do
+    with {:ok, m} <- unbox_map_or_false(a, handles) do
+      box(Map.keys(m), handles)
     end
   end
 
