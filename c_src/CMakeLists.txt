@@ -62,6 +62,18 @@ target_link_libraries(verify_s7 PRIVATE riscv)
 add_executable(s7c s7/s7c.cpp ${S7_COMPILER_SOURCES})
 target_link_libraries(s7c PRIVATE riscv)
 
+# Stage 3 fidelity: the REAL s7 interpreter compiled host-side (same
+# s7.c the guest embeds, natively this time) as the semantic oracle the
+# AOT compiler's output is diffed against.
+add_library(s7_host STATIC thirdparty/s7/s7.c)
+target_include_directories(s7_host PUBLIC thirdparty/s7)
+# guest/ provides the (empty) mus-config.h stub s7.c unconditionally
+# includes -- same one the RISC-V guest build uses.
+target_include_directories(s7_host PRIVATE guest)
+target_compile_definitions(s7_host PRIVATE WITH_C_LOADER=0 WITH_SYSTEM_EXTRAS=0)
+add_executable(verify_s7_fidelity host_test/verify_s7_fidelity.cpp ${S7_COMPILER_SOURCES})
+target_link_libraries(verify_s7_fidelity PRIVATE riscv s7_host)
+
 # The actual NIF the Elixir GenServer loads. ERTS_INCLUDE_DIR is passed
 # in by c_src/Makefile (elixir_make's entry point) - not hardcoded,
 # since it depends on the Erlang install on whatever machine builds
