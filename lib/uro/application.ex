@@ -17,23 +17,36 @@ defmodule Uro.Application do
     children =
       if System.get_env("MINIMAL_START") == "true",
         do: [],
-        else: [
-          Uro.Repo,
-          Uro.Repo.Migration,
-          Uro.Endpoint,
-          Uro.VSekai.ZoneJanitor,
-          Uro.Pow.DetsCache,
-          {Phoenix.PubSub, [name: Uro.PubSub, adapter: Phoenix.PubSub.PG2]},
-          ExMarcel.TableWrapper,
+        else:
+          [
+            Uro.Repo,
+            Uro.Repo.Migration,
+            Uro.Endpoint,
+            Uro.VSekai.ZoneJanitor,
+            Uro.Pow.DetsCache,
+            {Phoenix.PubSub, [name: Uro.PubSub, adapter: Phoenix.PubSub.PG2]},
+            ExMarcel.TableWrapper,
 
-          # ExMarcel
-          {Task, fn -> Uro.Helpers.Validation.init_extra_extensions() end}
-        ]
+            # ExMarcel
+            {Task, fn -> Uro.Helpers.Validation.init_extra_extensions() end}
+          ] ++ rebac_sandbox_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Uro.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Config-flip (RFD 0022): only boot the compiled-Scheme ReBAC program
+  # when it is actually selected, so environments that keep the default
+  # TaskweftAdapter never depend on priv/rebac.elf existing.
+  defp rebac_sandbox_children do
+    if Application.get_env(:uro, :rebac_adapter) == Uro.ReBAC.SandboxAdapter do
+      elf = File.read!(Path.join(:code.priv_dir(:uro), "rebac.elf"))
+      [{WeftWarpBurrito.Program, elf: elf, name: Uro.ReBAC.SandboxAdapter.Program}]
+    else
+      []
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

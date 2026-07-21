@@ -74,6 +74,7 @@ enum HostMathOp : int64_t {
   kHostMapRef = 24,    // (hash-table-ref m k); missing key -> #f, as in s7
   kHostMapSize = 25,
   kHostBinSize = 26,   // (string-length b), in bytes
+  kHostStrEq = 27,     // (string=? a b), byte-content compare; raw 0/1
 };
 
 // Guest heap ABI (shared by riscv_codegen, elf_builder, and the IR

@@ -24,7 +24,8 @@ bool is_primitive(const std::string& s) {
          s == ">" || s == ">=" || s == "<=" || s == "=" || s == "eq?" || s == "not" ||
          s == "car" || s == "cdr" || s == "cons" || s == "list" || s == "length" ||
          s == "list-ref" || s == "pair?" || s == "null?" || s == "vector-ref" ||
-         s == "vector-length" || s == "hash-table-ref" || s == "string-length";
+         s == "vector-length" || s == "hash-table-ref" || s == "string-length" ||
+         s == "string=?";
 }
 
 // Lowering context: functions live in a deque so references stay stable
@@ -268,6 +269,7 @@ struct FnCodegen {
     if (op == "vector-length") return gen_host_prim(e, kHostTupleSize, 1, false);
     if (op == "hash-table-ref") return gen_host_prim(e, kHostMapRef, 2, false);
     if (op == "string-length") return gen_host_prim(e, kHostBinSize, 1, false);
+    if (op == "string=?") return gen_host_prim(e, kHostStrEq, 2, /*raw_bool=*/true);
 
     return gen_call(e);
   }
