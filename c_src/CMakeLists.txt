@@ -48,3 +48,29 @@ if(DEFINED ERTS_INCLUDE_DIR)
     target_compile_options(weft_sandbox_nif PRIVATE -fvisibility=hidden)
   endif()
 endif()
+
+# RFD 0043: standalone host-side verification that libriscv's RV64GC
+# double-precision arithmetic matches native x86-64 execution bit-for-
+# bit, given a guest ELF built by hand (see c_src/lockstep/README.md --
+# not part of this CMake build, requires riscv-none-elf-gcc, which is
+# deliberately NOT a dependency of the default `nif` build target after
+# RFD 0039). Not part of the default build (mirrors this project's
+# existing convention for standalone verification tools -- see
+# verify_guest.cpp before its RFD 0039 retirement): build explicitly
+# with `cmake --build build --target verify_float_determinism`.
+add_executable(verify_float_determinism
+  host_test/verify_float_determinism.cpp
+  lockstep/vector3.c)
+target_include_directories(verify_float_determinism PRIVATE lockstep)
+target_link_libraries(verify_float_determinism PRIVATE riscv)
+
+# RFD 0043's other two float-determinism strategies (RFD 0042):
+# fixed-point ("ban floats"/"integer-only") and a minimal illustrative
+# softfloat. Same manual-build convention as verify_float_determinism
+# above -- build explicitly with
+#   cmake --build build --target verify_alt_strategies
+add_executable(verify_alt_strategies
+  host_test/verify_alt_strategies.cpp
+  lockstep/guest_alt.c)
+target_include_directories(verify_alt_strategies PRIVATE lockstep)
+target_link_libraries(verify_alt_strategies PRIVATE riscv)
