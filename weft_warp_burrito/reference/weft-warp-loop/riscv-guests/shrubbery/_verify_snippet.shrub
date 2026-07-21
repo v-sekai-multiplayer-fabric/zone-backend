@@ -1,8 +1,0 @@
-define add-one(x):
-  +(x, 1)
-
-define classify(n):
-  cond:
-    | <(n, 0): 'negative
-    | =(n, 0): 'zero
-    | else: 'positive
