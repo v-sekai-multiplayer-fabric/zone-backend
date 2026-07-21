@@ -94,7 +94,7 @@ defmodule Uro.MixProject do
       {:hammer, "~> 6.0"},
       {:scrivener_ecto, "~> 3.1"},
       {:ex_marcel, "~> 0.1.0"},
-      {:taskweft, path: "taskweft"},
+      {:taskweft_nif, path: "taskweft_nif"},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
       {:mox, "~> 1.1", only: :test},
