@@ -29,21 +29,25 @@ defmodule Taskweft.NIF do
   @on_load :__on_load__
 
   def __on_load__ do
-    path = :code.priv_dir(:taskweft_nif) |> to_string() |> Kernel.<>("/libtaskweft_nif")
+    path = :code.priv_dir(:uro) |> to_string() |> Kernel.<>("/libtaskweft_nif")
     :erlang.load_nif(path, 0)
   end
 
   def plan(_domain_json), do: :erlang.nif_error(:not_loaded)
   def plan_with_temporal(_domain_json, _origin_iso), do: :erlang.nif_error(:not_loaded)
   def plan_with_temporal_explain(_domain_json, _origin_iso), do: :erlang.nif_error(:not_loaded)
-  def plan_with_temporal_civil(_domain_json, _origin_iso, _reference_date), do: :erlang.nif_error(:not_loaded)
+
+  def plan_with_temporal_civil(_domain_json, _origin_iso, _reference_date),
+    do: :erlang.nif_error(:not_loaded)
 
   def plan_with_temporal_civil_explain(_domain_json, _origin_iso, _reference_date),
     do: :erlang.nif_error(:not_loaded)
 
   def replan(_domain_json, _plan_json, _fail_step), do: :erlang.nif_error(:not_loaded)
   def check_temporal(_domain_json, _plan_json, _origin_iso), do: :erlang.nif_error(:not_loaded)
-  def check_temporal_civil(_domain_json, _plan_json, _origin_iso, _reference_date), do: :erlang.nif_error(:not_loaded)
+
+  def check_temporal_civil(_domain_json, _plan_json, _origin_iso, _reference_date),
+    do: :erlang.nif_error(:not_loaded)
 
   def rebac_add_edge(_graph_json, _subj, _obj, _rel), do: :erlang.nif_error(:not_loaded)
   def rebac_check(_graph_json, _subj, _expr_json, _obj, _fuel), do: :erlang.nif_error(:not_loaded)

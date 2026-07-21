@@ -9,11 +9,27 @@ defmodule Uro.MixProject do
       version: "0.1.0",
       elixir: ">= 1.16.3",
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [] ++ Mix.compilers(),
+      compilers: [:elixir_make] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps()
-    ]
+    ] ++ make_options()
+  end
+
+  # taskweft_nif's C++20 planner NIF (lib/taskweft/nif.ex, c_src/taskweft_nif.cpp,
+  # standalone/) was extracted directly into this app -- mirrors the OS
+  # detection its own former mix.exs used.
+  defp make_options do
+    case {:os.type(), System.get_env("VCINSTALLDIR")} do
+      {{:win32, _}, vcdir} when is_binary(vcdir) and vcdir != "" ->
+        [make_executable: "nmake", make_args: ["/F", "Makefile.win"]]
+
+      {{:win32, _}, _} ->
+        [make_executable: "mingw32-make"]
+
+      _ ->
+        []
+    end
   end
 
   # Configuration for the OTP application.
@@ -94,7 +110,7 @@ defmodule Uro.MixProject do
       {:hammer, "~> 6.0"},
       {:scrivener_ecto, "~> 3.1"},
       {:ex_marcel, "~> 0.1.0"},
-      {:taskweft_nif, path: "taskweft_nif"},
+      {:elixir_make, "~> 0.10", runtime: false},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
       {:mox, "~> 1.1", only: :test},

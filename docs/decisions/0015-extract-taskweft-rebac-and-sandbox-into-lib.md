@@ -30,10 +30,12 @@ Vendored `taskweft_rebac`/`taskweft_nif` as fresh top-level subtrees, then:
   dependency — a NIF loader can't move to a different app without also
   moving its native build step.
 - `mix.exs`: `{:taskweft, path: "taskweft"}` → `{:taskweft_nif, path: "taskweft_nif"}`
-  (always-compiled, like `apps/uro_loop` — no CI gating needed:
-  `taskweft_nif`'s own `mix.exs` requires only `elixir: "~> 1.17"` and falls
-  back to plain `make` on non-Windows, unlike `weft_warp_burrito`'s hardcoded
-  `mingw32-make`/`elixir ~> 1.20`).
+  as an interim step (always-compiled, like `apps/uro_loop`) — superseded
+  immediately after by [[0016-merge-taskweft-nif-native-build-into-uro]],
+  which extracts `taskweft_nif` itself too, since its build is genuinely
+  cross-platform (`elixir: "~> 1.17"`, falls back to plain `make` on
+  non-Windows) unlike `weft_warp_burrito`'s hardcoded `mingw32-make`/
+  `elixir ~> 1.20`.
 - Deleted `taskweft/` and `taskweft_rebac/` (fully absorbed) once nothing
   referenced them.
 
