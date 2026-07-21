@@ -12,19 +12,34 @@ defmodule Uro.MixProject do
       compilers: [:elixir_make] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      dialyzer: dialyzer()
     ] ++ make_options()
+  end
+
+  # `mix dialyzer` (dialyxir). PLTs are cached under `priv/plts` (not
+  # `_build`) so a `mix clean`/fresh `_build` doesn't force a full PLT
+  # rebuild -- that's the slow part (core Erlang/Elixir PLT), not
+  # incremental analysis of this app's own modules.
+  defp dialyzer do
+    [
+      plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+      plt_add_apps: [:mix, :ex_unit],
+      ignore_warnings: ".dialyzer_ignore.exs"
+    ]
   end
 
   # weft_warp_burrito's sandbox NIF (lib/weft_warp_burrito/*,
   # c_src/{guest,nif,thirdparty}) was extracted directly into this app -- a
-  # single root Makefile builds it (plus the s7 AOT compiler and its fixture
-  # ELFs). mingw32-make on Windows (matches weft_warp_burrito's own former
-  # mix.exs -- its CMake+Ninja+RISC-V recipe was only ever GNU Make syntax,
-  # no MSVC/nmake port exists for it). The taskweft_nif.cpp/standalone/
-  # native planner+ReBAC NIF this Makefile used to also build was retired in
-  # RFD 0038, once the compiled-Scheme sandbox adapters (RFD 0022/0023)
-  # became the only ReBAC/planner adapters.
+  # single root Makefile builds it. mingw32-make on Windows (matches
+  # weft_warp_burrito's own former mix.exs -- its CMake+Ninja+RISC-V recipe
+  # was only ever GNU Make syntax, no MSVC/nmake port exists for it). The
+  # taskweft_nif.cpp/standalone/ native planner+ReBAC NIF this Makefile used
+  # to also build was retired in RFD 0038, once the compiled-Scheme sandbox
+  # adapters (RFD 0022/0023) became the only ReBAC/planner adapters; those
+  # were themselves retired in favor of plain-Elixir ports (RFD 0039), which
+  # is why c_src/s7 (the in-repo s7 AOT compiler this comment used to
+  # mention) no longer exists either.
   defp make_options do
     base = [make_env: fn -> %{"FINE_INCLUDE_DIR" => Fine.include_dir()} end]
 
@@ -77,6 +92,7 @@ defmodule Uro.MixProject do
       {:cors_plug, "~> 3.0"},
       {:phoenix_live_reload, "~> 1.5", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:gettext, "~> 0.18"},
       {:httpoison, "~> 2.0"},
       {:jason, "~> 1.2"},

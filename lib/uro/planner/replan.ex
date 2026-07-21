@@ -8,17 +8,16 @@ defmodule Uro.Planner.Replan do
   untrusted content.
 
   Unlike those, this module does NOT re-derive the actual HTN search
-  (`tw_plan`/`tw_plan_with_tree`) a third time -- that search exists
-  today as compiled Scheme (`Uro.Planner.SandboxAdapter`, RFD 0023,
-  the only planner adapter left since RFD 0038 retired the native
-  NIF), and porting it again to plain Elixir is separate, larger,
-  not-yet-scoped work. Instead the
-  planner is an injected dependency (`plan_fn`/`plan_with_tree_fn`),
+  (`tw_plan`/`tw_plan_with_tree`) a third time -- `Uro.Planner.
+  ElixirAdapter` (RFD 0039) has its own, plan/1-shaped entry point, and
+  `tw_plan_with_tree` (the tree-returning sibling `Replan`/`SolTree`
+  actually need) has no plain-Elixir port of its own yet. The planner
+  stays an injected dependency (`plan_fn`/`plan_with_tree_fn`),
   matching the original's own `tw_plan`/`tw_plan_with_tree` parameters
   exactly -- this keeps `simulate/3`, `replan/5`, and
   `replan_incremental/6` fully testable against a fake planner, and
-  makes them a real, reusable seam once a plain-Elixir planner exists
-  to plug in.
+  makes them a real, reusable seam once that tree-returning variant
+  exists to plug in.
 
   A plan step is `{name, args}` (mirroring `TwCall`); `actions` is a
   `%{name => (state, args -> state | nil)}` map (mirroring

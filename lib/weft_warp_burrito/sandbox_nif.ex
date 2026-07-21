@@ -3,7 +3,7 @@
 defmodule WeftWarpBurrito.SandboxNif do
   @moduledoc """
   Fine (elixir-nx/fine) bindings for c_src/nif/weft_sandbox_nif.cpp.
-  Not meant to be called directly - see `WeftWarpBurrito.Sandbox`, the
+  Not meant to be called directly - see `WeftWarpBurrito.Program`, the
   GenServer actor that owns one Machine resource per process and is the
   actual public API.
 
@@ -22,19 +22,7 @@ defmodule WeftWarpBurrito.SandboxNif do
     :erlang.load_nif(String.to_charlist(path), 0)
   end
 
-  @doc "Loads guest ELF at `path`, running guest_init() once. Returns {:ok, resource} | {:error, reason}."
-  def new_sandbox_nif(_path), do: :erlang.nif_error(:nif_not_loaded)
-
-  @doc """
-  Runs one fixed, named guest capability with a fuel (gas) budget.
-  `capability` is one of :loot_roll | :combat_replay | :progression_replay -
-  never an arbitrary caller-supplied symbol name (see the NIF source's
-  own header comment for why: a generic "call this named guest symbol"
-  entry point would defeat the whole point of a closed capability set).
-  """
-  def call_capability_nif(_resource, _capability, _fuel), do: :erlang.nif_error(:nif_not_loaded)
-
-  @doc "Loads an s7c-compiled RISC-V ELF (binary) as a program resource."
+  @doc "Loads a RISC-V ELF (binary) using the tagged-GuestValue host-call ABI as a program resource."
   def new_program_nif(_elf_binary), do: :erlang.nif_error(:nif_not_loaded)
 
   @doc """
