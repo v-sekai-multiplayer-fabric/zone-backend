@@ -13,8 +13,29 @@ defmodule Uro.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      dialyzer: dialyzer()
+      dialyzer: dialyzer(),
+      releases: releases()
     ] ++ make_options()
+  end
+
+  # Burrito wraps the real OTP release `mix release` produces into a
+  # single self-contained executable (bundled ERTS + BEAM files),
+  # cross-compiled via Zig -- no target-matching Erlang install needed
+  # on the machine that runs it, only on the machine that builds it.
+  # linux musl x86_64 matches Fly's own runner (Alpine-based images
+  # elsewhere in this repo, e.g. the root Dockerfile's `elixir:*-alpine`
+  # base), avoiding a glibc/musl mismatch between build and run images.
+  defp releases do
+    [
+      uro: [
+        steps: [:assemble, &Burrito.wrap/1],
+        burrito: [
+          targets: [
+            linux_musl: [os: :linux, cpu: :x86_64, libc: :musl]
+          ]
+        ]
+      ]
+    ]
   end
 
   # `mix dialyzer` (dialyxir). PLTs are cached under `priv/plts` (not
@@ -117,6 +138,7 @@ defmodule Uro.MixProject do
       {:ex_marcel, "~> 0.1.0"},
       {:elixir_make, "~> 0.10", runtime: false},
       {:fine, "~> 0.1", runtime: false},
+      {:burrito, "~> 1.0"},
       {:aria_storage, github: "V-Sekai-fire/aria-storage"},
       {:uro_loop, path: "apps/uro_loop"},
       {:mox, "~> 1.1", only: :test},
