@@ -76,3 +76,4 @@ lean/.lake/
 # real geogram/PMP/Eigen sources are vendored (checked in), but their
 # compiled .o/.a output is not.
 c_src/thirdparty/build/
+burrito_out/

@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 K. S. Ernest (iFire) Lee
 import Config
-Code.require_file("config/helpers.exs")
-Code.ensure_loaded!(Uro.Config.Helpers)
-alias Uro.Config.Helpers
 
 config :uro, Uro.Endpoint,
   debug_errors: true,
