@@ -5,9 +5,6 @@ defmodule Uro.Helpers.Auth do
   Session & authentication helper functions.
   """
 
-  require Pow.Phoenix.Router
-  require PowEmailConfirmation.Phoenix.Router
-
   def get_user_privilege_ruleset(user) do
     user
     |> is_map()
