@@ -18,11 +18,26 @@
 # Migrations run via Uro.Release.migrate/0 (lib/uro/release.ex),
 # `gateway_admin`/Uro.Repo.Migration only, standard Phoenix-release
 # pattern -- `mix ecto.migrate` does not exist inside a compiled release.
-FROM elixir:1.16-alpine AS build
+# Elixir 1.17 to match .github/workflows/ci.yml. 1.16 mis-parses
+# `@fixnum_min -(1 <<< 60)` (lib/weft_warp_burrito/program.ex) as a
+# read-and-subtract rather than an attribute definition, so this must
+# stay >= 1.17.
+FROM elixir:1.17-alpine AS build
 
 RUN apk add --no-cache \
 	nodejs npm inotify-tools git bash make gcc g++ curl libc-dev \
-	cmake ninja-build zig
+	cmake ninja xz
+
+# Burrito 1.6.0 pins an exact Zig version (0.16.0) and refuses to run on
+# anything else; Alpine's `zig` package is 0.14.1, so install upstream's
+# static build instead.
+ARG ZIG_VERSION=0.16.0
+RUN curl -fsSL -o /tmp/zig.tar.xz \
+		https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz \
+	&& mkdir -p /opt/zig \
+	&& tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1 \
+	&& rm /tmp/zig.tar.xz
+ENV PATH="/opt/zig:${PATH}"
 
 # xpack riscv-none-elf-gcc: needed by the c_src NIF build
 # (WeftWarpBurrito.SandboxNif's guest target), same toolchain
@@ -39,14 +54,20 @@ WORKDIR /app
 
 RUN mix local.hex --force && mix local.rebar --force
 
+# apps/uro_loop is a `path:` dependency, so its mix.exs has to be present
+# before `deps.get` -- mix resolves path deps by reading them in place.
 COPY mix.exs mix.lock ./
+COPY apps ./apps
 RUN mix do deps.get, patch.exmarcel, deps.compile
 
 COPY config ./config
 COPY priv ./priv
 COPY lib ./lib
+
+# The :elixir_make compiler runs the root Makefile during the release
+# build, which cmake-builds the weft_sandbox_nif (libriscv) shared object.
+COPY Makefile ./
 COPY c_src ./c_src
-COPY apps ./apps
 
 RUN mix release uro
 
