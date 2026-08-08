@@ -39,16 +39,14 @@ config :uro, :pow,
   routes_backend: Uro.Pow.Routes,
   cache_store_backend: Uro.Pow.DetsCache
 
-config :uro, :pow_assent,
-  user_identities_context: Uro.UserIdentities
+config :uro, :pow_assent, user_identities_context: Uro.UserIdentities
 
 config :waffle,
   storage: Waffle.Storage.Local
 
 # aria-storage uses SQLite for internal chunk metadata. Real path
 # (prod) comes from config/runtime.exs; this is the dev/test default.
-config :aria_storage, AriaStorage.Repo,
-  database: "priv/aria_storage.db"
+config :aria_storage, AriaStorage.Repo, database: "priv/aria_storage.db"
 
 import_config "#{Mix.env()}.exs"
 
