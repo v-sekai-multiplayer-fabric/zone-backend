@@ -133,7 +133,7 @@ defmodule Uro.Gyre.Domain do
   defp nilify(""), do: nil
   defp nilify(v), do: if(Map.has_key?(@contracts, to_string(v)), do: to_string(v), else: nil)
 
-  defp int(v, d) when is_integer(v), do: v
+  defp int(v, _d) when is_integer(v), do: v
   defp int(_, d), do: d
 
   @doc false
@@ -166,7 +166,7 @@ defmodule Uro.Gyre.Domain do
   # Each action marks itself done, so the planner returns exactly one step
   # rather than looping. The palette wants a recommendation, not a
   # full schedule.
-  defp actions(s) do
+  defp actions(_s) do
     base = %{
       "work" => set("/spark/has_contract", false),
       "deliver" => set("/spark/has_contract", false),
